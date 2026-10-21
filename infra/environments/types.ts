@@ -1,0 +1,23 @@
+import type { RetentionDays } from 'aws-cdk-lib/aws-logs';
+
+export const STAGES = ['dev', 'staging', 'uat', 'prod'] as const;
+export type Stage = (typeof STAGES)[number];
+
+export interface StageConfig {
+  stage: Stage;
+  serviceName: string;
+  awsRegion: string;
+  /** If set, CDK refuses to deploy the stack with credentials of another account */
+  awsAccount?: string;
+
+  /** esbuild */
+  esbuildMinify: boolean;
+  esbuildSourcemap: boolean;
+
+  /** true → tables stay when the stack is deleted (DeletionPolicy: Retain) */
+  retainData: boolean;
+  logRetention: RetentionDays;
+}
+
+/** A stage file overrides only what differs from common */
+export type StageOverrides = Pick<StageConfig, 'stage'> & Partial<StageConfig>;

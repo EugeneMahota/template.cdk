@@ -1,0 +1,11 @@
+# package directories
+node_modules
+
+# CDK: synthesized templates and lambda bundles
+cdk.out
+.cdk.staging
+
+.env
+.idea/
+.vscode/
+.DS_Store

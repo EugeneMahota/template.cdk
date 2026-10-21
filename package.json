@@ -1,0 +1,51 @@
+{
+  "name": "template-cdk",
+  "version": "0.0.1",
+  "private": true,
+  "scripts": {
+    "deploy:dev": "cdk deploy -c stage=dev",
+    "deploy:staging": "cdk deploy -c stage=staging",
+    "deploy:uat": "cdk deploy -c stage=uat",
+    "deploy:prod": "cdk deploy -c stage=prod",
+    "deploy:dev:hotswap": "cdk deploy -c stage=dev --hotswap",
+    "watch:dev": "cdk watch -c stage=dev",
+    "diff:dev": "cdk diff -c stage=dev",
+    "diff:staging": "cdk diff -c stage=staging",
+    "diff:uat": "cdk diff -c stage=uat",
+    "diff:prod": "cdk diff -c stage=prod",
+    "synth:dev": "cdk synth -c stage=dev",
+    "destroy:dev": "cdk destroy -c stage=dev",
+    "bootstrap": "cdk bootstrap",
+    "local": "node --env-file-if-exists=.env --import tsx",
+    "typecheck": "tsc",
+    "test": "node --import tsx --test \"test/**/*.test.ts\""
+  },
+  "engines": {
+    "node": ">=24",
+    "npm": ">=10"
+  },
+  "keywords": [
+    "aws",
+    "cdk",
+    "lambda",
+    "template"
+  ],
+  "author": "Eugene Mahota",
+  "dependencies": {
+    "@aws-sdk/client-dynamodb": "^3.1154.0",
+    "@aws-sdk/client-sfn": "^3.1154.0",
+    "@aws-sdk/client-sns": "^3.1154.0",
+    "@aws-sdk/client-sqs": "^3.1154.0",
+    "@aws-sdk/lib-dynamodb": "^3.1154.0",
+    "aws-cdk-lib": "^2.274.0",
+    "constructs": "^10.8.1"
+  },
+  "devDependencies": {
+    "@types/aws-lambda": "^8.10.164",
+    "@types/node": "^24.19.2",
+    "aws-cdk": "2.1146.0",
+    "esbuild": "^0.28.2",
+    "tsx": "^4.23.15",
+    "typescript": "~7.0.2"
+  }
+}
