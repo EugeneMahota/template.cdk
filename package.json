@@ -16,7 +16,7 @@
     "synth:dev": "cdk synth -c stage=dev",
     "destroy:dev": "cdk destroy -c stage=dev",
     "bootstrap": "cdk bootstrap",
-    "local": "node --env-file-if-exists=.env --import tsx",
+    "local": "node --conditions=import --env-file-if-exists=.env --import tsx",
     "typecheck": "tsc",
     "test": "node --import tsx --test \"test/**/*.test.ts\""
   },
@@ -37,6 +37,11 @@
     "@aws-sdk/client-sns": "^3.1154.0",
     "@aws-sdk/client-sqs": "^3.1154.0",
     "@aws-sdk/lib-dynamodb": "^3.1154.0",
+    "@middy/core": "^7.9.2",
+    "@middy/http-cors": "^7.9.2",
+    "@middy/http-error-handler": "^7.9.2",
+    "@middy/http-json-body-parser": "^7.9.2",
+    "@middy/http-response-serializer": "^7.9.2",
     "aws-cdk-lib": "^2.274.0",
     "constructs": "^10.8.1"
   },

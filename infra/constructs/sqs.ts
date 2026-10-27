@@ -5,7 +5,7 @@ import { Construct } from 'constructs';
 import { StageConfig } from '../environments/types';
 import { resourceName } from '../utils';
 import { Api } from './api';
-import { AppFunction } from './app-function';
+import { AppFunction } from './shared/app-function';
 
 interface SqsProps {
   config: StageConfig;
@@ -14,19 +14,20 @@ interface SqsProps {
 
 /**
  * template.sls: serverless/parts/sqs.ts
- * POST /api/add-queue-item → queue → handleQueueItem
+ * POST /v1/internal/add-queue-item → queue → handleQueueItem
  * after 2 failed attempts the message moves to the DLQ → handleFailedQueueItem
+ * The route is for other services: requests must be signed with IAM credentials (auth: 'iam', see api.ts)
  */
 export class Sqs extends Construct {
   constructor(scope: Construct, id: string, { config, api }: SqsProps) {
     super(scope, id);
 
     const queueDlq: Queue = new Queue(this, 'QueueExampleDLQ', {
-      queueName: resourceName(config, 'queue-example-dlq'),
+      queueName: resourceName(config, config.names.queueExampleDlq),
       retentionPeriod: Duration.days(14),
     });
     const queue: Queue = new Queue(this, 'QueueExample', {
-      queueName: resourceName(config, 'queue-example'),
+      queueName: resourceName(config, config.names.queueExample),
       retentionPeriod: Duration.days(14),
       /** AWS recommends a visibility timeout of at least 6 × the timeout of the handler lambda */
       visibilityTimeout: Duration.minutes(6),
@@ -43,7 +44,7 @@ export class Sqs extends Construct {
       },
     });
     queue.grantSendMessages(addItemInQueue);
-    api.addRoute('POST', 'add-queue-item', addItemInQueue);
+    api.addRoute({ method: 'POST', path: 'v1/internal/add-queue-item', handler: addItemInQueue, auth: 'iam' });
 
     const handleQueueItem: AppFunction = new AppFunction(this, 'HandleQueueItem', {
       config,

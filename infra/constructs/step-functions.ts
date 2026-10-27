@@ -4,7 +4,7 @@ import { Construct } from 'constructs';
 import { StageConfig } from '../environments/types';
 import { resourceName } from '../utils';
 import { Api } from './api';
-import { AppFunction } from './app-function';
+import { AppFunction } from './shared/app-function';
 
 interface StepFunctionsProps {
   config: StageConfig;
@@ -13,7 +13,8 @@ interface StepFunctionsProps {
 
 /**
  * template.sls: serverless/parts/step-functions.ts (without the serverless-step-functions plugin)
- * POST /api/schedule-delayed-function → state machine waits until scheduledTime → delayedFunctionHandler
+ * POST /v1/internal/schedule-delayed-function → state machine waits until scheduledTime → delayedFunctionHandler
+ * The route is for other services: requests must be signed with IAM credentials (auth: 'iam', see api.ts)
  */
 export class StepFunctions extends Construct {
   constructor(scope: Construct, id: string, { config, api }: StepFunctionsProps) {
@@ -36,7 +37,7 @@ export class StepFunctions extends Construct {
     );
 
     const stateMachine: StateMachine = new StateMachine(this, 'DelayedExecutionStateMachine', {
-      stateMachineName: resourceName(config, 'delayed-execution'),
+      stateMachineName: resourceName(config, config.names.delayedExecution),
       definitionBody: DefinitionBody.fromChainable(definition),
     });
 
@@ -50,6 +51,11 @@ export class StepFunctions extends Construct {
       },
     });
     stateMachine.grantStartExecution(scheduleDelayedFunction);
-    api.addRoute('POST', 'schedule-delayed-function', scheduleDelayedFunction);
+    api.addRoute({
+      method: 'POST',
+      path: 'v1/internal/schedule-delayed-function',
+      handler: scheduleDelayedFunction,
+      auth: 'iam',
+    });
   }
 }

@@ -6,7 +6,7 @@ import { Construct } from 'constructs';
 import { StageConfig } from '../environments/types';
 import { resourceName } from '../utils';
 import { Api } from './api';
-import { AppFunction } from './app-function';
+import { AppFunction } from './shared/app-function';
 
 const LOGS_TABLE_CODE_INDEX: string = 'eventCode-createdAt-index';
 
@@ -17,15 +17,16 @@ interface EventLogsProps {
 
 /**
  * template.sls: serverless/parts/tables.ts + SNS
- * POST /api/logs → write to DynamoDB → message to SNS → onLogCreated
- * GET /api/logs?eventCode=CREATE → query by GSI
+ * POST /v1/logs → write to DynamoDB → message to SNS → onLogCreated
+ * GET /v1/logs?eventCode=CREATE → query by GSI
+ * Both routes need an ID token of the user pool (auth: 'cognito', see api.ts)
  */
 export class EventLogs extends Construct {
   constructor(scope: Construct, id: string, { config, api }: EventLogsProps) {
     super(scope, id);
 
     const table: Table = new Table(this, 'EventLogsTable', {
-      tableName: resourceName(config, 'logs'),
+      tableName: resourceName(config, config.names.logsTable),
       partitionKey: { name: 'id', type: AttributeType.STRING },
       billingMode: BillingMode.PAY_PER_REQUEST,
       removalPolicy: config.retainData ? RemovalPolicy.RETAIN : RemovalPolicy.DESTROY,
@@ -37,7 +38,7 @@ export class EventLogs extends Construct {
     });
 
     const topic: Topic = new Topic(this, 'EventLogsTopic', {
-      topicName: resourceName(config, 'logs-topic'),
+      topicName: resourceName(config, config.names.logsTopic),
     });
 
     const createLog: AppFunction = new AppFunction(this, 'CreateLog', {
@@ -53,7 +54,7 @@ export class EventLogs extends Construct {
     /** Instead of provider.iam.role.statements: each lambda gets its own role with only the permissions it needs */
     table.grantWriteData(createLog);
     topic.grantPublish(createLog);
-    api.addRoute('POST', 'logs', createLog);
+    api.addRoute({ method: 'POST', path: 'v1/logs', handler: createLog, auth: 'cognito' });
 
     const getLogs: AppFunction = new AppFunction(this, 'GetLogs', {
       config,
@@ -66,7 +67,7 @@ export class EventLogs extends Construct {
       },
     });
     table.grantReadData(getLogs);
-    api.addRoute('GET', 'logs', getLogs);
+    api.addRoute({ method: 'GET', path: 'v1/logs', handler: getLogs, auth: 'cognito' });
 
     const onLogCreated: AppFunction = new AppFunction(this, 'OnLogCreated', {
       config,

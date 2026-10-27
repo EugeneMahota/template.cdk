@@ -1,8 +1,8 @@
 # template.cdk
 
 A service skeleton on AWS CDK v2 + TypeScript, in the style of [template.sls](https://github.com/EugeneMahota/template.sls):
-infrastructure and environment config live in `infra/`, business logic lives in `src/`. The only dependencies are CDK,
-AWS SDK and build tools.
+infrastructure and environment config live in `infra/`, business logic lives in `src/`. The dependencies are CDK, AWS
+SDK, middy and build tools.
 
 ## Structure
 
@@ -12,18 +12,22 @@ infra/                        infrastructure (in template.sls: serverless.ts + s
 ├── service-stack.ts          the stack, built from parts (like joinParts)
 ├── utils.ts                  resourceName(): template-cdk-logs-dev
 ├── environments/             config: common + overrides for dev / staging / uat / prod
-└── constructs/               parts of the stack (in template.sls: serverless/parts/)
-    ├── app-function.ts       shared lambda settings (provider + build.esbuild)
-    ├── api.ts                REST API (in SLS it was created from events.http)
-    ├── test-functions.ts     POST /api/test-function
-    ├── event-logs.ts         DynamoDB + GSI and SNS: POST and GET /api/logs
-    ├── sqs.ts                queue + DLQ: POST /api/add-queue-item
-    └── step-functions.ts     delayed run: POST /api/schedule-delayed-function
+└── constructs/               parts of the stack with their resources (in template.sls: serverless/parts/)
+    ├── shared/               reusable classes, without resources of their own
+    │   └── app-function.ts   shared lambda settings (provider + build.esbuild)
+    ├── api.ts                REST API and addRoute() with its auth: none / cognito / iam
+    ├── auth.ts               Cognito user pool and its app client
+    ├── users.ts              GET /v1/users/me
+    ├── test-functions.ts     POST /v1/test-function
+    ├── event-logs.ts         DynamoDB + GSI and SNS: POST and GET /v1/logs
+    ├── sqs.ts                queue + DLQ: POST /v1/internal/add-queue-item
+    └── step-functions.ts     delayed run: POST /v1/internal/schedule-delayed-function
 src/                          business logic, knows nothing about CDK
-├── api/                      handlers and a REST wrapper (instead of middy)
-├── helper/                   env, logger, HTTP errors, local run
+├── api/                      handlers and the REST wrapper on middy
+├── helper/                   env, logger, HTTP errors, user from the token, local run
 └── models/                   DynamoDB via AWS SDK (instead of dynamoose)
 test/                         infrastructure tests: check the CloudFormation template without a deploy
+docs/                         plans for what is not built yet
 ```
 
 ## How it maps to template.sls
@@ -32,9 +36,11 @@ test/                         infrastructure tests: check the CloudFormation tem
 |---|---|
 | `serverless/parts/*.ts` + `deepmerge` | `infra/constructs/*.ts`: construct classes |
 | `environment.*.ts` → `${param:...}` | `environment.*.ts` → typed `StageConfig` |
+| `LOGS_TABLE: ResourceName('logs')` | `names: { logsTable: 'logs' }` → `resourceName(config, config.names.logsTable)` |
 | `Arn()`, `Ref()`, `Fn::Sub` | object properties: `queue.queueUrl`, `table.tableName` |
 | `provider.iam.role.statements`, one role for all functions | `table.grantWriteData(fn)`: each lambda has its own role |
-| `events: [{ http }]` | `api.addRoute('POST', 'logs', fn)` |
+| `events: [{ http }]` | `api.addRoute({ method: 'POST', path: 'v1/logs', handler: fn, auth: 'cognito' })` |
+| `http.authorizer` | `auth` in `addRoute` (see [Routes and auth](#routes-and-auth)) |
 | `events: [{ sqs }]` | `fn.addEventSource(new SqsEventSource(queue))` |
 | `serverless-step-functions` plugin | `new Wait(...).next(new LambdaInvoke(...))` |
 | `build.esbuild` | `NodejsFunction` bundles with esbuild on its own |
@@ -48,6 +54,42 @@ turns off source maps and keeps the tables when the stack is deleted.
 Each stage is a separate stack: `template-cdk-dev`, `template-cdk-staging`, `template-cdk-uat`, `template-cdk-prod`.
 The stage is passed as context: `cdk deploy -c stage=uat`. The default is `dev` (`cdk.json` → `context.stage`).
 
+Resource names live in the config too: `names` in `environment.common.ts` has the short ones (`logsTable: 'logs'`),
+and `resourceName()` adds the service and the stage: `template-cdk-logs-dev`.
+
+## Routes and auth
+
+Every route says who may call it (`infra/constructs/api.ts`):
+
+```ts
+api.addRoute({ method: 'GET', path: 'v1/users/me', handler: getMe, auth: 'cognito' });
+```
+
+| `auth` | Who calls | How |
+|---|---|---|
+| `'none'` | anyone | no auth |
+| `'cognito'` | signed-in users of the app | an ID token of the user pool in the `Authorization` header |
+| `'iam'` | other services and scripts | the request is signed with AWS credentials (SigV4) |
+| an authorizer object | depends on the authorizer | a lambda `TokenAuthorizer`, another user pool |
+
+`auth` has no default, so a public route says `'none'` out loud. The path is free, but the synth fails when it breaks
+the naming rules: a version first (`v1/`, `v2/`), then kebab-case segments and `{camelCase}` parameters, e.g.
+`v1/users/{userId}/orders`. The test `gives each route the auth it asks for` lists every route with its auth, so a
+change of who may call what shows up in the merge request.
+
+- **Versions.** Version the contract, not the infrastructure: handler files per version
+  (`src/api/orders/v1/handler.ts`), shared models underneath, `v1` and `v2` side by side until old clients are
+  gone. Lambda versions and aliases are a different tool (canary deploys), they are not needed for this.
+- **The "me" model.** A handler takes the user only from the token: `getUserId(claims)` returns `sub` of the token
+  that the authorizer has checked. Paths have `me` instead of a user id (`/v1/users/me/orders`, not
+  `/v1/users/{userId}/orders`), so nobody can put another id into the URL. For a record of another user, answer
+  404, not 403: the API doesn't reveal that the record exists.
+- **Errors of API Gateway itself** (401 from the authorizer, 403 from IAM, 429, 5xx) don't reach the lambda, so
+  `GatewayResponse` adds the CORS header to them. Without it the browser shows a CORS error instead of the status.
+- **Callers of `iam` routes** need `execute-api:Invoke` on the route in their IAM policy:
+  `arn:aws:execute-api:<region>:<account>:<api-id>/<stage>/POST/v1/internal/add-queue-item`. A caller from another
+  AWS account also needs a resource policy on the API.
+
 ## First deploy
 
 1. `npm install`
@@ -56,8 +98,9 @@ The stage is passed as context: `cdk deploy -c stage=uat`. The default is `dev` 
    bundles and roles for deploys. If a stage is in another account, bootstrap it with that account's profile:
    `npx cdk bootstrap -c stage=prod --profile <profile>`.
 4. `npm run diff:dev` shows what will be created.
-5. `npm run deploy:dev`. At the end CDK prints the API URL:
-   `ApiRestApiEndpoint… = https://<id>.execute-api.eu-west-1.amazonaws.com/dev/`
+5. `npm run deploy:dev`. At the end CDK prints the API URL and the ids of the user pool and its client:
+   `ApiRestApiEndpoint… = https://<id>.execute-api.eu-west-1.amazonaws.com/dev/`, `AuthUserPoolId… = eu-west-1_…`,
+   `AuthUserPoolClientId… = …`
 
 ## Commands
 
@@ -78,12 +121,44 @@ The stage is passed as context: `cdk deploy -c stage=uat`. The default is `dev` 
 
 ```bash
 API=https://<id>.execute-api.eu-west-1.amazonaws.com/dev
+POOL_ID=<AuthUserPoolId… from the deploy output>
+CLIENT_ID=<AuthUserPoolClientId… from the deploy output>
+```
 
-curl -X POST $API/api/test-function -d '{"isShowError": true}'   # 400
-curl -X POST $API/api/logs -d '{"eventCode": "CREATE"}'          # write to DynamoDB + message to SNS
-curl "$API/api/logs?eventCode=CREATE"                            # read by GSI
-curl -X POST $API/api/add-queue-item -d '{"job": "fail"}'        # goes to the DLQ after 2 attempts
-curl -X POST $API/api/schedule-delayed-function                  # the lambda runs in 3 minutes
+**`auth: 'none'`**: no token.
+
+```bash
+curl -X POST $API/v1/test-function -d '{"isShowError": true}'   # 400
+```
+
+**`auth: 'cognito'`**: sign-up is off, so create a test user yourself and get an ID token (it is valid for an hour). The
+password needs 8+ characters with upper and lower case letters, a digit and a symbol.
+
+```bash
+aws cognito-idp admin-create-user --user-pool-id $POOL_ID --username me@example.com --message-action SUPPRESS \
+  --user-attributes Name=email,Value=me@example.com Name=email_verified,Value=true
+aws cognito-idp admin-set-user-password --user-pool-id $POOL_ID --username me@example.com \
+  --password '<password>' --permanent
+TOKEN=$(aws cognito-idp initiate-auth --client-id $CLIENT_ID --auth-flow USER_PASSWORD_AUTH \
+  --auth-parameters USERNAME=me@example.com,PASSWORD='<password>' \
+  --query AuthenticationResult.IdToken --output text)
+
+curl $API/v1/users/me                                # 401: no token
+curl $API/v1/users/me -H "Authorization: $TOKEN"     # id and email of the caller
+curl -X POST $API/v1/logs -H "Authorization: $TOKEN" -d '{"eventCode": "CREATE"}'   # DynamoDB + SNS
+curl "$API/v1/logs?eventCode=CREATE" -H "Authorization: $TOKEN"                    # read by GSI
+```
+
+**`auth: 'iam'`**: curl (7.75+) signs the request with your AWS credentials.
+
+```bash
+eval "$(aws configure export-credentials --profile <profile> --format env)"
+SIGN=(--aws-sigv4 "aws:amz:eu-west-1:execute-api" --user "$AWS_ACCESS_KEY_ID:$AWS_SECRET_ACCESS_KEY"
+  -H "x-amz-security-token: $AWS_SESSION_TOKEN")
+
+curl -X POST $API/v1/internal/add-queue-item -d '{"job": "fail"}'               # 403: not signed
+curl -X POST $API/v1/internal/add-queue-item "${SIGN[@]}" -d '{"job": "fail"}'  # goes to the DLQ after 2 attempts
+curl -X POST $API/v1/internal/schedule-delayed-function "${SIGN[@]}"            # the lambda runs in 3 minutes
 ```
 
 Logs are in CloudWatch: `/aws/lambda/template-cdk-<function name>-dev`.
@@ -97,7 +172,8 @@ npm run local -- src/api/test-functions/handler.ts
 
 This runs the `if (require.main === module)` block at the end of the handler file. Calls to AWS go to the real
 resources of the deployed stage, with the profile from `.env`. There is no `serverless-offline` here: for quick
-iterations `watch:dev` works better.
+iterations `watch:dev` works better. Handlers of `cognito` routes get fake token claims instead of a token:
+`runLocally(getMe, { claims: { sub: 'local-user' } })`.
 
 ## Things to know
 
@@ -106,8 +182,15 @@ iterations `watch:dev` works better.
   For a table in dev this means losing data; prod has `retainData: true`, so the table stays in the account.
 - **Resources have explicit names**, as in template.sls. The downside: a change that needs a new resource (for
   example, a new table key) fails, and you have to rename the resource first.
+- **Decide the sign-in settings of the user pool before the first prod deploy.** Sign-in with email and case
+  sensitivity can't change on a live pool: a change replaces it with a new, empty one. In prod the old pool and its
+  users stay in the account, but the app moves to the new pool.
 - **`hotswap` and `watch` change the code bypassing CloudFormation**, so use them only for dev.
 - **`@aws-sdk/*` is not in the bundle**: the lambdas use the version built into the Lambda runtime.
+- **middy is ESM only, the project is CommonJS.** It works because all the code runs through esbuild: NodejsFunction
+  bundles the lambdas, tsx runs the rest. So `tsconfig.json` resolves modules like a bundler
+  (`"moduleResolution": "bundler"`), and `npm run local` passes `--conditions=import` to Node, so that `require`
+  finds the ESM build of middy. If more ESM-only packages come, move the project to ESM (`"type": "module"`).
 - **Feature flags** in `cdk.json` → `context` come from `cdk init` and turn on the recommended behavior for new
   projects. Changing them in a live project is risky: some of them change the templates of existing resources.
 
@@ -121,10 +204,12 @@ The skeleton is intentionally minimal. Before building a real service on it, wor
   provider for `gitlab.com`, a deploy role that trusts your GitLab project (see "OpenID Connect in AWS" in the
   GitLab docs) and the `AWS_DEPLOY_ROLE_ARN` CI/CD variable with that role's ARN.
 
-- [ ] **API authorizer.** All routes are public today. Put at least one example route behind an authorizer —
-  Cognito (`CognitoUserPoolsAuthorizer`), IAM, or a custom lambda (`TokenAuthorizer`) — so the pattern lives in
-  the codebase. While there, set throttling on the stage (`deployOptions.throttlingRateLimit` /
-  `throttlingBurstLimit`): right now the API runs on the account defaults.
+- [ ] **Auth for real users.** The user pool is minimal. Before real users come: send its emails through SES
+  (`email: UserPoolEmail.withSES(...)`), since the built-in Cognito email sends only 50 emails a day; decide who
+  creates accounts (sign-up from the app or invites); add roles as Cognito groups (the `cognito:groups` claim) or
+  as a custom attribute that users can't change: keep it out of the client's `writeAttributes`, or anyone can set
+  it with their own token; turn on MFA if needed. Also set throttling on the API stage
+  (`deployOptions.throttlingRateLimit` / `throttlingBurstLimit`): right now the API runs on the account defaults.
 
 - [ ] **Config and secrets in SSM Parameter Store.** Keep per-stage values out of the repo under
   `/template-cdk/<stage>/...`. Two patterns, pick per value: deploy time —
@@ -140,19 +225,11 @@ The skeleton is intentionally minimal. Before building a real service on it, wor
   construct; `cdk-monitoring-constructs` gives ready-made dashboards. Optional on top: X-Ray
   (`tracing: Tracing.ACTIVE` in `AppFunction`) and structured logs with Lambda Powertools.
 
-- [ ] **API versioning (`/v1/...`, `/v2/...`).** `addRoute` already handles nested paths:
-  `api.addRoute('POST', 'v1/orders', fn)` → `/api/v1/orders`. Version the contract, not the infrastructure:
-  handler files per version (`src/api/orders/v1/handler.ts`), shared models underneath, v1 and v2 served side
-  by side until old clients are gone. Lambda versions/aliases are a different tool (canary deploys), not needed
-  for URL versioning.
+- [ ] **OpenAPI (Swagger) from Joi schemas.** The REST wrapper does not validate input at runtime yet. The plan for
+  both, validation with Joi in `restApiHandler` and `openapi/openapi.yaml` generated from the same schemas, is in
+  [docs/openapi-from-joi.md](docs/openapi-from-joi.md).
 
-- [ ] **OpenAPI (Swagger) from validation schemas.** The REST wrapper does not validate input at runtime yet —
-  solve both problems at once: describe body/query with schemas (Joi + `joi-to-swagger`, or zod +
-  `@asteasolutions/zod-to-openapi` — zod also infers the TS types, so `LambdaEvent<Body>` comes for free),
-  validate them in `restApiHandler`, and generate the OpenAPI spec from the same schemas in CI or serve it at
-  `GET /api/docs`. One source of truth for types, validation and docs.
-
-- [ ] **Pre-commit git hook** (the project is not a git repository yet, so `git init` first). Format, types and
+- [ ] **Pre-commit git hook.** Format, types and
   tests before every commit, with no extra tools:
 
   ```bash

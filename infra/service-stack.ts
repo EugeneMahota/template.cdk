@@ -1,10 +1,12 @@
 import { Stack, StackProps } from 'aws-cdk-lib/core';
 import { Construct } from 'constructs';
 import { Api } from './constructs/api';
+import { Auth } from './constructs/auth';
 import { EventLogs } from './constructs/event-logs';
 import { Sqs } from './constructs/sqs';
 import { StepFunctions } from './constructs/step-functions';
 import { TestFunctions } from './constructs/test-functions';
+import { Users } from './constructs/users';
 import { StageConfig } from './environments/types';
 
 export interface ServiceStackProps extends StackProps {
@@ -17,8 +19,10 @@ export class ServiceStack extends Stack {
     super(scope, id, props);
     const { config } = props;
 
-    const api: Api = new Api(this, 'Api', { config });
+    const auth: Auth = new Auth(this, 'Auth', { config });
+    const api: Api = new Api(this, 'Api', { config, userPool: auth.userPool });
 
+    new Users(this, 'Users', { config, api });
     new TestFunctions(this, 'TestFunctions', { config, api });
     new EventLogs(this, 'EventLogs', { config, api });
     new Sqs(this, 'Sqs', { config, api });

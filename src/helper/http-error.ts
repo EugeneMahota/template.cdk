@@ -1,4 +1,4 @@
-/** Minimal replacement for http-errors: throw BadRequest('...') → 400 response */
+/** Minimal replacement for http-errors: throw BadRequest('...') → 400 response (httpErrorHandler reads statusCode) */
 export class HttpError extends Error {
   constructor(
     readonly statusCode: number,

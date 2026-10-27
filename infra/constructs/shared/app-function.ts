@@ -4,10 +4,10 @@ import { Runtime } from 'aws-cdk-lib/aws-lambda';
 import { NodejsFunction, NodejsFunctionProps } from 'aws-cdk-lib/aws-lambda-nodejs';
 import { LogGroup } from 'aws-cdk-lib/aws-logs';
 import { Construct } from 'constructs';
-import { StageConfig } from '../environments/types';
-import { resourceName } from '../utils';
+import { StageConfig } from '../../environments/types';
+import { resourceName } from '../../utils';
 
-const PROJECT_ROOT: string = path.resolve(__dirname, '../..');
+const PROJECT_ROOT: string = path.resolve(__dirname, '../../..');
 
 export interface AppFunctionProps extends Omit<NodejsFunctionProps, 'entry' | 'functionName'> {
   config: StageConfig;

@@ -14,9 +14,21 @@ export interface StageConfig {
   esbuildMinify: boolean;
   esbuildSourcemap: boolean;
 
-  /** true → tables stay when the stack is deleted (DeletionPolicy: Retain) */
+  /** true → tables and the user pool stay when the stack is deleted (DeletionPolicy: Retain) */
   retainData: boolean;
   logRetention: RetentionDays;
+
+  /** Short resource names. resourceName() adds the service and the stage: 'logs' → template-cdk-logs-dev */
+  names: {
+    api: string;
+    userPool: string;
+    userPoolClient: string;
+    logsTable: string;
+    logsTopic: string;
+    queueExample: string;
+    queueExampleDlq: string;
+    delayedExecution: string;
+  };
 }
 
 /** A stage file overrides only what differs from common */

@@ -7,6 +7,8 @@ type LocalRequest = {
   headers?: Record<string, string>;
   path?: Record<string, string>;
   query?: Record<string, string>;
+  /** Token claims for routes with auth: 'cognito', as the authorizer passes them: { sub: '<user id>', email: '...' } */
+  claims?: Record<string, string>;
 };
 
 /**
@@ -15,14 +17,16 @@ type LocalRequest = {
  */
 export async function runLocally(
   handler: ApiGatewayHandler,
-  { body, headers, path, query }: LocalRequest
+  { body, headers, path, query, claims }: LocalRequest
 ): Promise<void> {
   /** Only the fields that restApiHandler reads */
+  const requestContext: Partial<APIGatewayProxyEvent['requestContext']> = { authorizer: { claims } };
   const event: Partial<APIGatewayProxyEvent> = {
     body: JSON.stringify(body ?? {}),
     headers: { 'Content-Type': 'application/json', ...headers },
     pathParameters: path ?? null,
     queryStringParameters: query ?? null,
+    requestContext: requestContext as APIGatewayProxyEvent['requestContext'],
   };
   const context: Partial<Context> = {
     functionName: 'local',

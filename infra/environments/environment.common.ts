@@ -12,4 +12,25 @@ export const COMMON_CONFIG: Omit<StageConfig, 'stage'> = {
   /** data */
   retainData: false,
   logRetention: RetentionDays.ONE_MONTH,
+
+  names: {
+    api: 'api',
+
+    /** cognito */
+    userPool: 'users',
+    userPoolClient: 'app',
+
+    /** tables */
+    logsTable: 'logs',
+
+    /** sns */
+    logsTopic: 'logs-topic',
+
+    /** sqs */
+    queueExample: 'queue-example',
+    queueExampleDlq: 'queue-example-dlq',
+
+    /** step functions */
+    delayedExecution: 'delayed-execution',
+  },
 };
