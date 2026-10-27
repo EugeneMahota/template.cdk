@@ -28,7 +28,6 @@ src/                          business logic, knows nothing about CDK
 test/                         tests: the CloudFormation template without a deploy, restApiHandler
 tools/                        generate-openapi.ts, middy-hook.mjs (see "Things to know")
 openapi/                      openapi.yaml, generated from the Joi contracts: don't edit by hand
-docs/                         design notes
 ```
 
 ## How it maps to template.sls
@@ -86,8 +85,8 @@ change of who may call what shows up in the merge request.
 - **Contracts.** Every handler passes Joi schemas to `restApiHandler`, `{}` when it takes no input:
   `restApiHandler({ body: Joi.object({ eventCode }) }, handler)`. The wrapper checks `body`, `query` and `path`
   before the handler runs: 400 with the Joi message, and the handler gets the converted values. `npm run openapi`
-  turns the same schemas into [openapi/openapi.yaml](openapi/openapi.yaml), and CI fails when the file is out of
-  date. How it works: [docs/openapi-from-joi.md](docs/openapi-from-joi.md).
+  turns the same schemas into [openapi/openapi.yaml](openapi/openapi.yaml) (`tools/generate-openapi.ts`), and CI
+  fails when the file is out of date.
 - **Versions.** Version the contract, not the infrastructure: handler files per version
   (`src/api/orders/v1/handler.ts`), shared models underneath, `v1` and `v2` side by side until old clients are
   gone. Lambda versions and aliases are a different tool (canary deploys), they are not needed for this.
@@ -246,8 +245,7 @@ The skeleton is intentionally minimal. Before building a real service on it, wor
 
 - [ ] **Publish the OpenAPI spec.** `openapi/openapi.yaml` is generated from the Joi contracts and checked in CI.
   Left: pick where people read it (GitLab shows the committed file as Swagger UI, or `GET /v1/docs`, or S3 + Swagger
-  UI after a deploy) and describe the success bodies with `response` schemas. See
-  [docs/openapi-from-joi.md](docs/openapi-from-joi.md).
+  UI after a deploy) and describe the success bodies with `response` schemas.
 
 - [ ] **Pre-commit git hook.** Format, types and
   tests before every commit, with no extra tools:
