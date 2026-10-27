@@ -29,6 +29,8 @@ check:
     - npm ci
     - npm run typecheck
     - npm test
+    # openapi/openapi.yaml must match the routes and the Joi contracts: run `npm run openapi` and commit it
+    - npm run openapi:check
 
 diff:
   extends: .aws

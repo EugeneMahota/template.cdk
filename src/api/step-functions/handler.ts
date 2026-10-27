@@ -10,6 +10,7 @@ const sfn: SFNClient = new SFNClient();
 type DelayedExecutionInput = { scheduledTime: string; answer: number };
 
 export const scheduleDelayedFunction: ApiGatewayHandler = restApiHandler(
+  {},
   async (): Promise<{ message: string; scheduledTime: string }> => {
     const input: DelayedExecutionInput = {
       scheduledTime: new Date(Date.now() + 1000 * 60 * 3).toISOString(),

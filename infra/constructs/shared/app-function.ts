@@ -24,6 +24,10 @@ export interface AppFunctionProps extends Omit<NodejsFunctionProps, 'entry' | 'f
  * Any setting can be overridden for a single function: memorySize, timeout, etc.
  */
 export class AppFunction extends NodejsFunction {
+  /** Handler file relative to the project root and its export: tools/generate-openapi.ts reads the contract there */
+  readonly entry: string;
+  readonly exportName: string;
+
   constructor(scope: Construct, id: string, { config, name, entry, environment, ...props }: AppFunctionProps) {
     const functionName: string = resourceName(config, name);
 
@@ -51,5 +55,7 @@ export class AppFunction extends NodejsFunction {
       },
       ...props,
     });
+    this.entry = entry;
+    this.exportName = props.handler;
   }
 }

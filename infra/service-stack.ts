@@ -15,12 +15,16 @@ export interface ServiceStackProps extends StackProps {
 
 /** Like joinParts() in template.sls: the stack is built from independent parts (constructs) */
 export class ServiceStack extends Stack {
+  /** tools/generate-openapi.ts reads the routes from it */
+  readonly api: Api;
+
   constructor(scope: Construct, id: string, props: ServiceStackProps) {
     super(scope, id, props);
     const { config } = props;
 
     const auth: Auth = new Auth(this, 'Auth', { config });
     const api: Api = new Api(this, 'Api', { config, userPool: auth.userPool });
+    this.api = api;
 
     new Users(this, 'Users', { config, api });
     new TestFunctions(this, 'TestFunctions', { config, api });

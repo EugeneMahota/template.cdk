@@ -11,6 +11,6 @@
     "skipLibCheck": true,
     "noEmit": true
   },
-  "include": ["infra", "src", "test"],
+  "include": ["infra", "src", "test", "tools"],
   "exclude": ["node_modules", "cdk.out"]
 }

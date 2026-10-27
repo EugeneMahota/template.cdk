@@ -26,8 +26,10 @@ src/                          business logic, knows nothing about CDK
 ├── api/                      handlers and the REST wrapper on middy
 ├── helper/                   env, logger, HTTP errors, user from the token, local run
 └── models/                   DynamoDB via AWS SDK (instead of dynamoose)
-test/                         infrastructure tests: check the CloudFormation template without a deploy
-docs/                         plans for what is not built yet
+test/                         tests: the CloudFormation template without a deploy, restApiHandler
+tools/                        generate-openapi.ts, middy-hook.mjs (see "Things to know")
+openapi/                      openapi.yaml, generated from the Joi contracts: don't edit by hand
+docs/                         design notes
 ```
 
 ## How it maps to template.sls
@@ -77,6 +79,11 @@ the naming rules: a version first (`v1/`, `v2/`), then kebab-case segments and `
 `v1/users/{userId}/orders`. The test `gives each route the auth it asks for` lists every route with its auth, so a
 change of who may call what shows up in the merge request.
 
+- **Contracts.** Every handler passes Joi schemas to `restApiHandler`, `{}` when it takes no input:
+  `restApiHandler({ body: Joi.object({ eventCode }) }, handler)`. The wrapper checks `body`, `query` and `path`
+  before the handler runs: 400 with the Joi message, and the handler gets the converted values. `npm run openapi`
+  turns the same schemas into [openapi/openapi.yaml](openapi/openapi.yaml), and CI fails when the file is out of
+  date. How it works: [docs/openapi-from-joi.md](docs/openapi-from-joi.md).
 - **Versions.** Version the contract, not the infrastructure: handler files per version
   (`src/api/orders/v1/handler.ts`), shared models underneath, `v1` and `v2` side by side until old clients are
   gone. Lambda versions and aliases are a different tool (canary deploys), they are not needed for this.
@@ -114,7 +121,9 @@ change of who may call what shows up in the merge request.
 | `destroy:dev` | delete the stack | `sls remove` |
 | `bootstrap` | prepare the account and region for deploys | — |
 | `local -- <file>` | run a handler on your machine | `ts-node` + `export-env` |
-| `test` | infrastructure tests | — |
+| `test` | tests | — |
+| `openapi` | write `openapi/openapi.yaml` from the routes and their Joi contracts | `sls openapi generate` |
+| `openapi:check` | fail if `openapi/openapi.yaml` doesn't match the code (CI runs it) | — |
 | `typecheck` | type check (it also runs before every synth and deploy) | — |
 
 ## Check after a deploy
@@ -189,8 +198,10 @@ iterations `watch:dev` works better. Handlers of `cognito` routes get fake token
 - **`@aws-sdk/*` is not in the bundle**: the lambdas use the version built into the Lambda runtime.
 - **middy is ESM only, the project is CommonJS.** It works because all the code runs through esbuild: NodejsFunction
   bundles the lambdas, tsx runs the rest. So `tsconfig.json` resolves modules like a bundler
-  (`"moduleResolution": "bundler"`), and `npm run local` passes `--conditions=import` to Node, so that `require`
-  finds the ESM build of middy. If more ESM-only packages come, move the project to ESM (`"type": "module"`).
+  (`"moduleResolution": "bundler"`), and `npm run local`, `npm test` and `npm run openapi` load
+  `tools/middy-hook.mjs`: it lets `require` find the ESM build of `@middy/*`, and only of them. A global
+  `--conditions=import` would do the same, but under tsx it breaks the packages that require their own JSON files
+  (joi). If more ESM-only packages come, move the project to ESM (`"type": "module"`).
 - **Feature flags** in `cdk.json` → `context` come from `cdk init` and turn on the recommended behavior for new
   projects. Changing them in a live project is risky: some of them change the templates of existing resources.
 
@@ -225,8 +236,9 @@ The skeleton is intentionally minimal. Before building a real service on it, wor
   construct; `cdk-monitoring-constructs` gives ready-made dashboards. Optional on top: X-Ray
   (`tracing: Tracing.ACTIVE` in `AppFunction`) and structured logs with Lambda Powertools.
 
-- [ ] **OpenAPI (Swagger) from Joi schemas.** The REST wrapper does not validate input at runtime yet. The plan for
-  both, validation with Joi in `restApiHandler` and `openapi/openapi.yaml` generated from the same schemas, is in
+- [ ] **Publish the OpenAPI spec.** `openapi/openapi.yaml` is generated from the Joi contracts and checked in CI.
+  Left: pick where people read it (GitLab shows the committed file as Swagger UI, or `GET /v1/docs`, or S3 + Swagger
+  UI after a deploy) and describe the success bodies with `response` schemas. See
   [docs/openapi-from-joi.md](docs/openapi-from-joi.md).
 
 - [ ] **Pre-commit git hook.** Format, types and
@@ -237,9 +249,10 @@ The skeleton is intentionally minimal. Before building a real service on it, wor
   cat > .githooks/pre-commit <<'EOF'
   #!/bin/sh
   set -e
-  npx prettier --check "{infra,src,test}/**/*.ts"
+  npx prettier --check "{infra,src,test,tools}/**/*.ts"
   npm run typecheck
   npm test
+  npm run openapi:check
   EOF
   chmod +x .githooks/pre-commit
   git config core.hooksPath .githooks

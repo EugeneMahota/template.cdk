@@ -9,10 +9,10 @@ import {
   RestApi,
 } from 'aws-cdk-lib/aws-apigateway';
 import { IUserPool } from 'aws-cdk-lib/aws-cognito';
-import { IFunction } from 'aws-cdk-lib/aws-lambda';
 import { Construct } from 'constructs';
 import { StageConfig } from '../environments/types';
 import { resourceName } from '../utils';
+import { AppFunction } from './shared/app-function';
 
 type HttpMethod = 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
 
@@ -29,7 +29,8 @@ export interface Route {
   method: HttpMethod;
   /** 'v1/users/{userId}/orders': a version first, then kebab-case segments and {camelCase} parameters */
   path: string;
-  handler: IFunction;
+  /** An AppFunction knows its file and export, so tools/generate-openapi.ts can find the contract of the route */
+  handler: AppFunction;
   /** Required on purpose: a public route says 'none' out loud */
   auth: RouteAuth;
 }
@@ -45,6 +46,8 @@ interface ApiProps {
 /** REST API (API Gateway v1). In Serverless Framework it was created implicitly from events.http */
 export class Api extends Construct {
   readonly restApi: RestApi;
+  /** Every route in the order of addRoute(): tools/generate-openapi.ts builds the spec from them */
+  readonly routes: Route[] = [];
   private readonly userPool: IUserPool;
   private cognitoAuthorizer?: CognitoUserPoolsAuthorizer;
 
@@ -73,9 +76,11 @@ export class Api extends Construct {
   }
 
   /** api.addRoute({ method: 'GET', path: 'v1/users/me', handler: fn, auth: 'cognito' }) → GET /v1/users/me */
-  addRoute({ method, path, handler, auth }: Route): void {
+  addRoute(route: Route): void {
+    const { method, path, handler, auth } = route;
     assertPath(path);
     this.restApi.root.resourceForPath(path).addMethod(method, new LambdaIntegration(handler), this.methodOptions(auth));
+    this.routes.push(route);
   }
 
   private methodOptions(auth: RouteAuth): MethodOptions {

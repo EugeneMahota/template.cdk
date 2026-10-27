@@ -4,8 +4,8 @@ import { App, Stack } from 'aws-cdk-lib/core';
 import { Match, Template } from 'aws-cdk-lib/assertions';
 import { TokenAuthorizer } from 'aws-cdk-lib/aws-apigateway';
 import { UserPool } from 'aws-cdk-lib/aws-cognito';
-import { Function as LambdaFunction } from 'aws-cdk-lib/aws-lambda';
 import { Api } from '../infra/constructs/api';
+import { AppFunction } from '../infra/constructs/shared/app-function';
 import { buildConfig } from '../infra/environments/env-builder';
 import { ServiceStack } from '../infra/service-stack';
 
@@ -84,14 +84,20 @@ describe('ServiceStack', () => {
 });
 
 describe('Api', () => {
-  /** An Api in an empty stack, with an imported function as the handler: nothing gets bundled */
+  /** An Api in an empty stack. Routes take an AppFunction, so the handler is a real one: getMe */
   function emptyApi() {
     const stack = new Stack();
+    const config = buildConfig('dev');
     const api = new Api(stack, 'Api', {
-      config: buildConfig('dev'),
+      config,
       userPool: UserPool.fromUserPoolId(stack, 'UserPool', 'eu-west-1_test'),
     });
-    const handler = LambdaFunction.fromFunctionName(stack, 'Handler', 'handler');
+    const handler = new AppFunction(stack, 'Handler', {
+      config,
+      name: 'handler',
+      entry: 'src/api/users/handler.ts',
+      handler: 'getMe',
+    });
     return { stack, api, handler };
   }
 

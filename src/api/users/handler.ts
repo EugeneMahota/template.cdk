@@ -5,7 +5,7 @@ import type { ApiGatewayHandler, LambdaEvent } from '../types';
 
 type Me = { id: string; email?: string };
 
-export const getMe: ApiGatewayHandler = restApiHandler(async ({ claims }: LambdaEvent): Promise<Me> => ({
+export const getMe: ApiGatewayHandler = restApiHandler({}, async ({ claims }: LambdaEvent): Promise<Me> => ({
   id: getUserId(claims),
   email: claims.email,
 }));
