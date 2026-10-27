@@ -9,7 +9,7 @@ export interface LambdaEvent<Body = unknown, PathParams = Params, QueryParams = 
   path: PathParams;
   query: QueryParams;
   headers: Params;
-  /** Claims of the token that the authorizer has checked: only on routes with auth: 'cognito', empty on the others */
+  /** Claims of the checked token: on routes with AuthType.COGNITO or LAMBDA, empty on the others */
   claims: Params;
 }
 

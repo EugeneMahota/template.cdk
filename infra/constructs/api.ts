@@ -7,23 +7,36 @@ import {
   MethodOptions,
   ResponseType,
   RestApi,
+  TokenAuthorizer,
 } from 'aws-cdk-lib/aws-apigateway';
-import { IUserPool } from 'aws-cdk-lib/aws-cognito';
+import { IUserPool, IUserPoolClient } from 'aws-cdk-lib/aws-cognito';
 import { Construct } from 'constructs';
 import { StageConfig } from '../environments/types';
 import { resourceName } from '../utils';
 import { AppFunction } from './shared/app-function';
 
-type HttpMethod = 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
+export enum HttpMethod {
+  GET = 'GET',
+  POST = 'POST',
+  PUT = 'PUT',
+  PATCH = 'PATCH',
+  DELETE = 'DELETE',
+}
 
-/**
- * Who may call the route:
- * - 'none': anyone
- * - 'cognito': signed-in users, with an ID token of the user pool in the Authorization header
- * - 'iam': other services and scripts, with requests signed by IAM credentials (SigV4)
- * - an authorizer object: a lambda authorizer (TokenAuthorizer), another user pool
- */
-export type RouteAuth = 'none' | 'cognito' | 'iam' | IAuthorizer;
+/** Who may call the route */
+export enum AuthType {
+  /** Anyone */
+  NONE = 'none',
+  /** Signed-in users, with an ID token of the user pool in the Authorization header */
+  COGNITO = 'cognito',
+  /** The same token, but our lambda checks it (src/api/authorizer/handler.ts): the place for custom rules */
+  LAMBDA = 'lambda',
+  /** Other services and scripts, with requests signed by IAM credentials (SigV4) */
+  IAM = 'iam',
+}
+
+/** An AuthType, or any authorizer object: another lambda authorizer, another user pool */
+export type RouteAuth = AuthType | IAuthorizer;
 
 export interface Route {
   method: HttpMethod;
@@ -31,7 +44,7 @@ export interface Route {
   path: string;
   /** An AppFunction knows its file and export, so tools/generate-openapi.ts can find the contract of the route */
   handler: AppFunction;
-  /** Required on purpose: a public route says 'none' out loud */
+  /** Required on purpose: a public route says AuthType.NONE out loud */
   auth: RouteAuth;
 }
 
@@ -41,6 +54,8 @@ const PATH_SEGMENT = /^([a-z0-9]+(-[a-z0-9]+)*|\{[a-z][a-zA-Z0-9]*\})$/;
 interface ApiProps {
   config: StageConfig;
   userPool: IUserPool;
+  /** The lambda authorizer accepts only the tokens of this client */
+  userPoolClient: IUserPoolClient;
 }
 
 /** REST API (API Gateway v1). In Serverless Framework it was created implicitly from events.http */
@@ -48,12 +63,17 @@ export class Api extends Construct {
   readonly restApi: RestApi;
   /** Every route in the order of addRoute(): tools/generate-openapi.ts builds the spec from them */
   readonly routes: Route[] = [];
+  private readonly config: StageConfig;
   private readonly userPool: IUserPool;
+  private readonly userPoolClient: IUserPoolClient;
   private cognitoAuthorizer?: CognitoUserPoolsAuthorizer;
+  private tokenAuthorizer?: TokenAuthorizer;
 
-  constructor(scope: Construct, id: string, { config, userPool }: ApiProps) {
+  constructor(scope: Construct, id: string, { config, userPool, userPoolClient }: ApiProps) {
     super(scope, id);
+    this.config = config;
     this.userPool = userPool;
+    this.userPoolClient = userPoolClient;
 
     this.restApi = new RestApi(this, 'RestApi', {
       restApiName: resourceName(config, config.names.api),
@@ -75,7 +95,7 @@ export class Api extends Construct {
     this.restApi.addGatewayResponse('Default5xx', { type: ResponseType.DEFAULT_5XX, responseHeaders: corsHeaders });
   }
 
-  /** api.addRoute({ method: 'GET', path: 'v1/users/me', handler: fn, auth: 'cognito' }) → GET /v1/users/me */
+  /** api.addRoute({ method: HttpMethod.GET, path: 'v1/users/me', handler: fn, auth: AuthType.COGNITO }) */
   addRoute(route: Route): void {
     const { method, path, handler, auth } = route;
     assertPath(path);
@@ -84,22 +104,48 @@ export class Api extends Construct {
   }
 
   private methodOptions(auth: RouteAuth): MethodOptions {
-    if (auth === 'none') {
+    if (auth === AuthType.NONE) {
       return { authorizationType: AuthorizationType.NONE };
     }
-    if (auth === 'iam') {
+    if (auth === AuthType.IAM) {
       return { authorizationType: AuthorizationType.IAM };
     }
+    if (auth === AuthType.COGNITO) {
+      return { authorizer: this.userPoolAuthorizer() };
+    }
+    if (auth === AuthType.LAMBDA) {
+      return { authorizer: this.lambdaAuthorizer() };
+    }
     /** CDK takes the auth type from the authorizer: COGNITO_USER_POOLS, or CUSTOM for a lambda authorizer */
-    return { authorizer: auth === 'cognito' ? this.userPoolAuthorizer() : auth };
+    return { authorizer: auth };
   }
 
-  /** Created with the first 'cognito' route: CDK fails the synth if an authorizer has no routes */
+  /** Created with the first AuthType.COGNITO route: CDK fails the synth if an authorizer has no routes */
   private userPoolAuthorizer(): CognitoUserPoolsAuthorizer {
     this.cognitoAuthorizer ??= new CognitoUserPoolsAuthorizer(this, 'CognitoAuthorizer', {
       cognitoUserPools: [this.userPool],
     });
     return this.cognitoAuthorizer;
+  }
+
+  /**
+   * Created with the first AuthType.LAMBDA route, like the Cognito one. It reads the Authorization header and caches
+   * its answer for 5 minutes per token, the same defaults as the built-in authorizer
+   */
+  private lambdaAuthorizer(): TokenAuthorizer {
+    this.tokenAuthorizer ??= new TokenAuthorizer(this, 'LambdaAuthorizer', {
+      handler: new AppFunction(this, 'LambdaAuthorizerFunction', {
+        config: this.config,
+        name: 'authorizer',
+        entry: 'src/api/authorizer/handler.ts',
+        handler: 'authorize',
+        environment: {
+          USER_POOL_ID: this.userPool.userPoolId,
+          USER_POOL_CLIENT_ID: this.userPoolClient.userPoolClientId,
+        },
+      }),
+    });
+    return this.tokenAuthorizer;
   }
 }
 

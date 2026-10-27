@@ -1,7 +1,5 @@
 import type { RetentionDays } from 'aws-cdk-lib/aws-logs';
-
-export const STAGES = ['dev', 'staging', 'uat', 'prod'] as const;
-export type Stage = (typeof STAGES)[number];
+import { Stage } from './stage';
 
 export interface StageConfig {
   stage: Stage;

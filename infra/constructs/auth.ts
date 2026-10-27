@@ -5,8 +5,9 @@ import { StageConfig } from '../environments/types';
 import { resourceName } from '../utils';
 
 /**
- * Cognito user pool for the routes with auth: 'cognito' (see api.ts). Users sign in with email and password and get
- * an ID token, the API authorizer checks it. How to create a test user and get a token: README → Check after a deploy
+ * Cognito user pool for the routes with AuthType.COGNITO or AuthType.LAMBDA (see api.ts). Users sign in with email
+ * and password and get an ID token, the authorizer of the route checks it. How to create a test user and get a
+ * token: README → Check after a deploy
  */
 export class Auth extends Construct {
   readonly userPool: UserPool;

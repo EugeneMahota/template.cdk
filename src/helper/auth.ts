@@ -6,8 +6,8 @@
 export function getUserId(claims: Record<string, string | undefined>): string {
   const userId: string | undefined = claims.sub;
   if (!userId) {
-    /** Not a client error: the route was added without auth: 'cognito', so nobody checked a token */
-    throw new Error("No user in the request: add the route with auth: 'cognito'");
+    /** Not a client error: the route was added without AuthType.COGNITO or LAMBDA, so nobody checked a token */
+    throw new Error('No user in the request: add the route with AuthType.COGNITO or AuthType.LAMBDA');
   }
   return userId;
 }

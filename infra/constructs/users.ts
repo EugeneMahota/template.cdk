@@ -1,6 +1,6 @@
 import { Construct } from 'constructs';
 import { StageConfig } from '../environments/types';
-import { Api } from './api';
+import { Api, AuthType, HttpMethod } from './api';
 import { AppFunction } from './shared/app-function';
 
 interface UsersProps {
@@ -19,6 +19,6 @@ export class Users extends Construct {
       entry: 'src/api/users/handler.ts',
       handler: 'getMe',
     });
-    api.addRoute({ method: 'GET', path: 'v1/users/me', handler: getMe, auth: 'cognito' });
+    api.addRoute({ method: HttpMethod.GET, path: 'v1/users/me', handler: getMe, auth: AuthType.LAMBDA });
   }
 }

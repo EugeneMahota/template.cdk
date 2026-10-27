@@ -3,7 +3,7 @@ import { LambdaInvoke } from 'aws-cdk-lib/aws-stepfunctions-tasks';
 import { Construct } from 'constructs';
 import { StageConfig } from '../environments/types';
 import { resourceName } from '../utils';
-import { Api } from './api';
+import { Api, AuthType, HttpMethod } from './api';
 import { AppFunction } from './shared/app-function';
 
 interface StepFunctionsProps {
@@ -14,7 +14,7 @@ interface StepFunctionsProps {
 /**
  * template.sls: serverless/parts/step-functions.ts (without the serverless-step-functions plugin)
  * POST /v1/internal/schedule-delayed-function → state machine waits until scheduledTime → delayedFunctionHandler
- * The route is for other services: requests must be signed with IAM credentials (auth: 'iam', see api.ts)
+ * The route is for other services: requests must be signed with IAM credentials (AuthType.IAM, see api.ts)
  */
 export class StepFunctions extends Construct {
   constructor(scope: Construct, id: string, { config, api }: StepFunctionsProps) {
@@ -52,10 +52,10 @@ export class StepFunctions extends Construct {
     });
     stateMachine.grantStartExecution(scheduleDelayedFunction);
     api.addRoute({
-      method: 'POST',
+      method: HttpMethod.POST,
       path: 'v1/internal/schedule-delayed-function',
       handler: scheduleDelayedFunction,
-      auth: 'iam',
+      auth: AuthType.IAM,
     });
   }
 }

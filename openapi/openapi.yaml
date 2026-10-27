@@ -36,7 +36,7 @@ paths:
       tags:
         - users
       security:
-        - cognito: []
+        - lambda: []
       responses:
         "200":
           description: OK
@@ -181,6 +181,11 @@ paths:
                 $ref: "#/components/schemas/Error"
 components:
   securitySchemes:
+    lambda:
+      type: apiKey
+      in: header
+      name: Authorization
+      description: ID token of the user pool, checked by the lambda authorizer
     cognito:
       type: apiKey
       in: header

@@ -22,7 +22,7 @@ infra/                        infrastructure (in template.sls: serverless.ts + s
     ├── sqs.ts                queue + DLQ: POST /v1/internal/add-queue-item
     └── step-functions.ts     delayed run: POST /v1/internal/schedule-delayed-function
 src/                          business logic, knows nothing about CDK
-├── api/                      handlers and the REST wrapper on middy
+├── api/                      handlers, the REST wrapper on middy, the lambda authorizer
 ├── helper/                   env, logger, HTTP errors, user from the token, local run
 └── models/                   DynamoDB via AWS SDK (instead of dynamoose)
 test/                         tests: the CloudFormation template without a deploy, restApiHandler
@@ -40,7 +40,7 @@ docs/                         design notes
 | `LOGS_TABLE: ResourceName('logs')` | `names: { logsTable: 'logs' }` → `resourceName(config, config.names.logsTable)` |
 | `Arn()`, `Ref()`, `Fn::Sub` | object properties: `queue.queueUrl`, `table.tableName` |
 | `provider.iam.role.statements`, one role for all functions | `table.grantWriteData(fn)`: each lambda has its own role |
-| `events: [{ http }]` | `api.addRoute({ method: 'POST', path: 'v1/logs', handler: fn, auth: 'cognito' })` |
+| `events: [{ http }]` | `api.addRoute({ method: HttpMethod.POST, path: 'v1/logs', handler: fn, auth: AuthType.COGNITO })` |
 | `http.authorizer` | `auth` in `addRoute` (see [Routes and auth](#routes-and-auth)) |
 | `events: [{ sqs }]` | `fn.addEventSource(new SqsEventSource(queue))` |
 | `serverless-step-functions` plugin | `new Wait(...).next(new LambdaInvoke(...))` |
@@ -48,7 +48,9 @@ docs/                         design notes
 
 ## Stages
 
-`dev`, `staging`, `uat`, `prod`. Each stage has a file in `infra/environments/` that overrides `environment.common.ts`.
+`dev`, `staging`, `uat`, `prod`: the `Stage` enum in `infra/environments/stage.ts`. Each stage has a file in
+`infra/environments/` that overrides `environment.common.ts`. A new stage is a member in `Stage`, its own file, a line
+in `env-builder.ts` (TypeScript asks for it) and the scripts in `package.json`.
 `staging` and `uat` have no overrides yet, so they use the common settings, like `dev`. `prod` minifies the code,
 turns off source maps and keeps the tables when the stack is deleted.
 
@@ -62,20 +64,21 @@ execute-api URL.
 
 ## Routes and auth
 
-Every route says who may call it (`infra/constructs/api.ts`):
+Every route says who may call it. `HttpMethod` and `AuthType` are enums in `infra/constructs/api.ts`:
 
 ```ts
-api.addRoute({ method: 'GET', path: 'v1/users/me', handler: getMe, auth: 'cognito' });
+api.addRoute({ method: HttpMethod.GET, path: 'v1/users/me', handler: getMe, auth: AuthType.LAMBDA });
 ```
 
 | `auth` | Who calls | How |
 |---|---|---|
-| `'none'` | anyone | no auth |
-| `'cognito'` | signed-in users of the app | an ID token of the user pool in the `Authorization` header |
-| `'iam'` | other services and scripts | the request is signed with AWS credentials (SigV4) |
+| `AuthType.NONE` | anyone | no auth |
+| `AuthType.COGNITO` | signed-in users of the app | an ID token of the user pool in the `Authorization` header |
+| `AuthType.LAMBDA` | signed-in users of the app | the same ID token, checked by our lambda authorizer |
+| `AuthType.IAM` | other services and scripts | the request is signed with AWS credentials (SigV4) |
 | an authorizer object | depends on the authorizer | a lambda `TokenAuthorizer`, another user pool |
 
-`auth` has no default, so a public route says `'none'` out loud. The path is free, but the synth fails when it breaks
+`auth` has no default, so a public route says `AuthType.NONE` out loud. The path is free, but the synth fails when it breaks
 the naming rules: a version first (`v1/`, `v2/`), then kebab-case segments and `{camelCase}` parameters, e.g.
 `v1/users/{userId}/orders`. The test `gives each route the auth it asks for` lists every route with its auth, so a
 change of who may call what shows up in the merge request.
@@ -92,6 +95,11 @@ change of who may call what shows up in the merge request.
   that the authorizer has checked. Paths have `me` instead of a user id (`/v1/users/me/orders`, not
   `/v1/users/{userId}/orders`), so nobody can put another id into the URL. For a record of another user, answer
   404, not 403: the API doesn't reveal that the record exists.
+- **The lambda authorizer** (`src/api/authorizer/handler.ts`) checks the ID token like the built-in one, with
+  `aws-jwt-verify`: the signature, the expiry, the user pool and the app client. It is the place for custom rules,
+  such as a blocked account or a role (`cognito:groups`). API Gateway caches its answer for 5 minutes per token, so
+  the answer allows the whole API and must not depend on the route. `/v1/users/me` uses it, the logs use the
+  built-in one.
 - **Errors of API Gateway itself** (401 from the authorizer, 403 from IAM, 429, 5xx) don't reach the lambda, so
   `GatewayResponse` adds the CORS header to them. Without it the browser shows a CORS error instead of the status.
 - **Callers of `iam` routes** need `execute-api:Invoke` on the route in their IAM policy:
@@ -135,8 +143,9 @@ POOL_ID=<AuthUserPoolId… from the deploy output>
 CLIENT_ID=<AuthUserPoolClientId… from the deploy output>
 ```
 
-**`auth: 'cognito'`**: sign-up is off, so create a test user yourself and get an ID token (it is valid for an hour). The
-password needs 8+ characters with upper and lower case letters, a digit and a symbol.
+**`AuthType.COGNITO` and `AuthType.LAMBDA`**: both take the same ID token. Sign-up is off, so create a test user
+yourself and get a token (it is valid for an hour). The password needs 8+ characters with upper and lower case
+letters, a digit and a symbol.
 
 ```bash
 aws cognito-idp admin-create-user --user-pool-id $POOL_ID --username me@example.com --message-action SUPPRESS \
@@ -153,7 +162,7 @@ curl -X POST $API/v1/logs -H "Authorization: $TOKEN" -d '{"eventCode": "CREATE"}
 curl "$API/v1/logs?eventCode=CREATE" -H "Authorization: $TOKEN"                    # read by GSI
 ```
 
-**`auth: 'iam'`**: curl (7.75+) signs the request with your AWS credentials.
+**`AuthType.IAM`**: curl (7.75+) signs the request with your AWS credentials.
 
 ```bash
 eval "$(aws configure export-credentials --profile <profile> --format env)"

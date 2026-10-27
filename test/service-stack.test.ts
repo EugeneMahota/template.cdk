@@ -3,14 +3,15 @@ import { describe, it } from 'node:test';
 import { App, Stack } from 'aws-cdk-lib/core';
 import { Match, Template } from 'aws-cdk-lib/assertions';
 import { TokenAuthorizer } from 'aws-cdk-lib/aws-apigateway';
-import { UserPool } from 'aws-cdk-lib/aws-cognito';
-import { Api } from '../infra/constructs/api';
+import { UserPool, UserPoolClient } from 'aws-cdk-lib/aws-cognito';
+import { Api, AuthType, HttpMethod } from '../infra/constructs/api';
 import { AppFunction } from '../infra/constructs/shared/app-function';
 import { buildConfig } from '../infra/environments/env-builder';
+import { Stage } from '../infra/environments/stage';
 import { ServiceStack } from '../infra/service-stack';
 
 /** Synthesizes the stack into a CloudFormation template: no deploy, no AWS credentials */
-function synth(stage: string): Template {
+function synth(stage: Stage): Template {
   const config = buildConfig(stage);
   const stack = new ServiceStack(new App(), 'TestStack', { config, env: { region: config.awsRegion } });
   return Template.fromStack(stack);
@@ -35,7 +36,7 @@ function routeAuth(template: Template): Record<string, string> {
 }
 
 describe('ServiceStack', () => {
-  const dev: Template = synth('dev');
+  const dev: Template = synth(Stage.DEV);
 
   it('creates logs table with GSI by eventCode', () => {
     dev.hasResourceProperties('AWS::DynamoDB::Table', {
@@ -52,7 +53,7 @@ describe('ServiceStack', () => {
   });
 
   it('keeps tables and users after stack deletion only in prod', () => {
-    const prod: Template = synth('prod');
+    const prod: Template = synth(Stage.PROD);
     for (const type of ['AWS::DynamoDB::Table', 'AWS::Cognito::UserPool']) {
       dev.hasResource(type, { DeletionPolicy: 'Delete' });
       prod.hasResource(type, { DeletionPolicy: 'Retain' });
@@ -63,13 +64,14 @@ describe('ServiceStack', () => {
   /** Every route of the API with its auth: a change of who may call what shows up in the merge request */
   it('gives each route the auth it asks for', () => {
     assert.deepEqual(routeAuth(dev), {
-      'GET /v1/users/me': 'COGNITO_USER_POOLS',
+      'GET /v1/users/me': 'CUSTOM',
       'POST /v1/logs': 'COGNITO_USER_POOLS',
       'GET /v1/logs': 'COGNITO_USER_POOLS',
       'POST /v1/internal/add-queue-item': 'AWS_IAM',
       'POST /v1/internal/schedule-delayed-function': 'AWS_IAM',
     });
-    dev.resourceCountIs('AWS::ApiGateway::Authorizer', 1);
+    /** The Cognito one for the logs, the lambda one for /v1/users/me */
+    dev.resourceCountIs('AWS::ApiGateway::Authorizer', 2);
   });
 
   it('adds the CORS header to errors that API Gateway returns itself', () => {
@@ -86,10 +88,11 @@ describe('Api', () => {
   /** An Api in an empty stack. Routes take an AppFunction, so the handler is a real one: getMe */
   function emptyApi() {
     const stack = new Stack();
-    const config = buildConfig('dev');
+    const config = buildConfig(Stage.DEV);
     const api = new Api(stack, 'Api', {
       config,
       userPool: UserPool.fromUserPoolId(stack, 'UserPool', 'eu-west-1_test'),
+      userPoolClient: UserPoolClient.fromUserPoolClientId(stack, 'UserPoolClient', 'test-client'),
     });
     const handler = new AppFunction(stack, 'Handler', {
       config,
@@ -109,14 +112,14 @@ describe('Api', () => {
       ['v1/users/{user_id}', /"\{user_id\}" must be kebab-case/],
     ];
     for (const [path, error] of wrongPaths) {
-      assert.throws(() => api.addRoute({ method: 'GET', path, handler, auth: 'none' }), error);
+      assert.throws(() => api.addRoute({ method: HttpMethod.GET, path, handler, auth: AuthType.NONE }), error);
     }
   });
 
   it('takes the auth type from any authorizer', () => {
     const { stack, api, handler } = emptyApi();
     const auth = new TokenAuthorizer(stack, 'TokenAuthorizer', { handler });
-    api.addRoute({ method: 'GET', path: 'v1/users/{userId}/reports', handler, auth });
+    api.addRoute({ method: HttpMethod.GET, path: 'v1/users/{userId}/reports', handler, auth });
 
     Template.fromStack(stack).hasResourceProperties('AWS::ApiGateway::Method', {
       HttpMethod: 'GET',

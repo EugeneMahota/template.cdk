@@ -4,7 +4,7 @@ import { Queue } from 'aws-cdk-lib/aws-sqs';
 import { Construct } from 'constructs';
 import { StageConfig } from '../environments/types';
 import { resourceName } from '../utils';
-import { Api } from './api';
+import { Api, AuthType, HttpMethod } from './api';
 import { AppFunction } from './shared/app-function';
 
 interface SqsProps {
@@ -16,7 +16,7 @@ interface SqsProps {
  * template.sls: serverless/parts/sqs.ts
  * POST /v1/internal/add-queue-item → queue → handleQueueItem
  * after 2 failed attempts the message moves to the DLQ → handleFailedQueueItem
- * The route is for other services: requests must be signed with IAM credentials (auth: 'iam', see api.ts)
+ * The route is for other services: requests must be signed with IAM credentials (AuthType.IAM, see api.ts)
  */
 export class Sqs extends Construct {
   constructor(scope: Construct, id: string, { config, api }: SqsProps) {
@@ -44,7 +44,12 @@ export class Sqs extends Construct {
       },
     });
     queue.grantSendMessages(addItemInQueue);
-    api.addRoute({ method: 'POST', path: 'v1/internal/add-queue-item', handler: addItemInQueue, auth: 'iam' });
+    api.addRoute({
+      method: HttpMethod.POST,
+      path: 'v1/internal/add-queue-item',
+      handler: addItemInQueue,
+      auth: AuthType.IAM,
+    });
 
     const handleQueueItem: AppFunction = new AppFunction(this, 'HandleQueueItem', {
       config,

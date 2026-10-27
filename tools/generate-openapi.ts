@@ -9,9 +9,10 @@ import { Construct } from 'constructs';
 import type { ObjectSchema, Schema } from 'joi';
 import joiToJson from 'joi-to-json';
 import { stringify } from 'yaml';
-import type { Route, RouteAuth } from '../infra/constructs/api';
+import { AuthType, Route, RouteAuth } from '../infra/constructs/api';
 import { buildConfig } from '../infra/environments/env-builder';
-import { StageConfig, STAGES } from '../infra/environments/types';
+import { Stage } from '../infra/environments/stage';
+import type { StageConfig } from '../infra/environments/types';
 import { ServiceStack } from '../infra/service-stack';
 import type { ApiGatewayHandler, RequestContract } from '../src/api/types';
 
@@ -26,9 +27,15 @@ const JSON_TYPE = 'application/json';
 type OpenApiObject = Record<string, unknown>;
 type SecurityScheme = { name: string; definition: OpenApiObject };
 
-const SECURITY_SCHEMES: Record<'cognito' | 'iam', OpenApiObject> = {
-  cognito: { type: 'apiKey', in: 'header', name: 'Authorization', description: 'ID token of the user pool' },
-  iam: {
+const SECURITY_SCHEMES: Record<Exclude<AuthType, AuthType.NONE>, OpenApiObject> = {
+  [AuthType.COGNITO]: { type: 'apiKey', in: 'header', name: 'Authorization', description: 'ID token of the user pool' },
+  [AuthType.LAMBDA]: {
+    type: 'apiKey',
+    in: 'header',
+    name: 'Authorization',
+    description: 'ID token of the user pool, checked by the lambda authorizer',
+  },
+  [AuthType.IAM]: {
     type: 'apiKey',
     in: 'header',
     name: 'Authorization',
@@ -39,7 +46,7 @@ const SECURITY_SCHEMES: Record<'cognito' | 'iam', OpenApiObject> = {
 
 function main(): void {
   /** Routes and auth don't depend on the stage. No bundling: the spec needs the routes, not the lambda code */
-  const config = buildConfig('dev');
+  const config = buildConfig(Stage.DEV);
   const app = new App({ context: { 'aws:cdk:bundling-stacks': [] } });
   const { api } = new ServiceStack(app, 'OpenApi', { config, env: { region: config.awsRegion } });
 
@@ -72,7 +79,7 @@ function main(): void {
   const document = {
     openapi: '3.0.3',
     info: { title: config.serviceName, version: readPackageVersion() },
-    servers: STAGES.map((stage) => toServer(buildConfig(stage))),
+    servers: Object.values(Stage).map((stage) => toServer(buildConfig(stage))),
     paths,
     components: {
       securitySchemes,
@@ -116,10 +123,10 @@ function loadContract({ handler }: Route): RequestContract | undefined {
 }
 
 function toSecurityScheme(auth: RouteAuth): SecurityScheme | undefined {
-  if (auth === 'none') {
+  if (auth === AuthType.NONE) {
     return undefined;
   }
-  if (auth === 'cognito' || auth === 'iam') {
+  if (typeof auth === 'string') {
     return { name: auth, definition: SECURITY_SCHEMES[auth] };
   }
   return {
@@ -154,9 +161,9 @@ function toResponses(auth: RouteAuth, contract: RequestContract): OpenApiObject 
   if (contract.body || contract.query || contract.path) {
     responses['400'] = errorResponse('The request does not match the contract');
   }
-  if (auth === 'iam') {
+  if (auth === AuthType.IAM) {
     responses['403'] = errorResponse('The request is not signed, or the caller may not invoke the route');
-  } else if (auth !== 'none') {
+  } else if (auth !== AuthType.NONE) {
     responses['401'] = errorResponse('No token, or the token is not valid');
   }
   if (contract.body) {

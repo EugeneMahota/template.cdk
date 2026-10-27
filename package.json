@@ -45,6 +45,7 @@
     "@middy/http-json-body-parser": "^7.9.2",
     "@middy/http-response-serializer": "^7.9.2",
     "aws-cdk-lib": "^2.274.0",
+    "aws-jwt-verify": "^5.2.1",
     "constructs": "^10.8.1",
     "joi": "^18.3.0"
   },

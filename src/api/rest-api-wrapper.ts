@@ -93,6 +93,7 @@ function toLambdaEvent(event: APIGatewayProxyEvent): LambdaEvent {
     path: event.pathParameters ?? {},
     query: event.queryStringParameters ?? {},
     headers: event.headers ?? {},
-    claims: event.requestContext?.authorizer?.claims ?? {},
+    /** The Cognito authorizer puts the claims into authorizer.claims, our lambda authorizer into authorizer itself */
+    claims: event.requestContext?.authorizer?.claims ?? event.requestContext?.authorizer ?? {},
   };
 }

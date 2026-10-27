@@ -22,7 +22,7 @@ export class ServiceStack extends Stack {
     const { config } = props;
 
     const auth: Auth = new Auth(this, 'Auth', { config });
-    const api: Api = new Api(this, 'Api', { config, userPool: auth.userPool });
+    const api: Api = new Api(this, 'Api', { config, userPool: auth.userPool, userPoolClient: auth.userPoolClient });
     this.api = api;
 
     new Users(this, 'Users', { config, api });

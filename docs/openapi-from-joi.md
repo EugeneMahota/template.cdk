@@ -46,7 +46,7 @@ as `entry` and `exportName`.
 
 ### 3. The generator: `tools/generate-openapi.ts`
 
-1. Builds `ServiceStack` in memory with `buildConfig('dev')`: routes and auth don't depend on the stage. The
+1. Builds `ServiceStack` in memory with `buildConfig(Stage.DEV)`: routes and auth don't depend on the stage. The
    `aws:cdk:bundling-stacks` context is empty, so CDK skips esbuild and the generator takes about half a second.
 2. For each route in `api.routes`, requires the handler file and reads `contract` of the export. A route without a
    contract stops the generator.
@@ -57,11 +57,12 @@ as `entry` and `exportName`.
    - `requestBody` from `body`. It is `required` only when `{}` breaks the schema, because a missing body reaches the
      handler as `{}`;
    - `parameters` from `path` (always required) and `query`;
-   - `security` from `auth`: `'cognito'` → the ID token in `Authorization`, `'iam'` → SigV4, `'none'` → none, an
-     authorizer object → a scheme named after its construct id;
-   - responses: 200, 400 when there is a contract, 401 for `'cognito'` and authorizer objects, 403 for `'iam'`, 422
-     when there is a `body` (`httpJsonBodyParser` answers 422 to a body that is not valid JSON). Errors are
-     `{"message": "..."}`;
+   - `security` from `auth`: `AuthType.COGNITO` → the ID token in `Authorization`, `AuthType.LAMBDA` → the same
+     token checked by the lambda authorizer, `AuthType.IAM` → SigV4, `AuthType.NONE` → none, an authorizer object
+     → a scheme named after its construct id;
+   - responses: 200, 400 when there is a contract, 401 for `AuthType.COGNITO`, `AuthType.LAMBDA` and authorizer
+     objects, 403 for `AuthType.IAM`, 422 when there is a `body` (`httpJsonBodyParser` answers 422 to a body that
+     is not valid JSON). Errors are `{"message": "..."}`;
    - `operationId` is the export name, `tags` is the folder in `src/api/`.
 5. `servers` has one entry per stage: `https://<apiDomain>` when the stage config sets `apiDomain`, otherwise the
    execute-api URL with the API id as a variable.
@@ -85,7 +86,7 @@ Dependencies: `joi` (it ends up in the lambda bundles), `joi-to-json` and `yaml`
 Any of these, to decide later:
 
 - the committed `openapi/openapi.yaml`: GitLab shows files with `openapi` in the name as Swagger UI;
-- serve it at `GET /v1/docs` with `auth: 'none'`;
+- serve it at `GET /v1/docs` with `AuthType.NONE`;
 - after a deploy, upload the spec and Swagger UI to S3 (`BucketDeployment` in a separate construct).
 
 ## Open questions

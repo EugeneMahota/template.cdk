@@ -5,7 +5,7 @@ import { LambdaSubscription } from 'aws-cdk-lib/aws-sns-subscriptions';
 import { Construct } from 'constructs';
 import { StageConfig } from '../environments/types';
 import { resourceName } from '../utils';
-import { Api } from './api';
+import { Api, AuthType, HttpMethod } from './api';
 import { AppFunction } from './shared/app-function';
 
 const LOGS_TABLE_CODE_INDEX: string = 'eventCode-createdAt-index';
@@ -19,7 +19,7 @@ interface EventLogsProps {
  * template.sls: serverless/parts/tables.ts + SNS
  * POST /v1/logs → write to DynamoDB → message to SNS → onLogCreated
  * GET /v1/logs?eventCode=CREATE → query by GSI
- * Both routes need an ID token of the user pool (auth: 'cognito', see api.ts)
+ * Both routes need an ID token of the user pool (AuthType.COGNITO, see api.ts)
  */
 export class EventLogs extends Construct {
   constructor(scope: Construct, id: string, { config, api }: EventLogsProps) {
@@ -54,7 +54,7 @@ export class EventLogs extends Construct {
     /** Instead of provider.iam.role.statements: each lambda gets its own role with only the permissions it needs */
     table.grantWriteData(createLog);
     topic.grantPublish(createLog);
-    api.addRoute({ method: 'POST', path: 'v1/logs', handler: createLog, auth: 'cognito' });
+    api.addRoute({ method: HttpMethod.POST, path: 'v1/logs', handler: createLog, auth: AuthType.COGNITO });
 
     const getLogs: AppFunction = new AppFunction(this, 'GetLogs', {
       config,
@@ -67,7 +67,7 @@ export class EventLogs extends Construct {
       },
     });
     table.grantReadData(getLogs);
-    api.addRoute({ method: 'GET', path: 'v1/logs', handler: getLogs, auth: 'cognito' });
+    api.addRoute({ method: HttpMethod.GET, path: 'v1/logs', handler: getLogs, auth: AuthType.COGNITO });
 
     const onLogCreated: AppFunction = new AppFunction(this, 'OnLogCreated', {
       config,
