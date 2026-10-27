@@ -9,6 +9,12 @@ export interface StageConfig {
   awsRegion: string;
   /** If set, CDK refuses to deploy the stack with credentials of another account */
   awsAccount?: string;
+  /**
+   * Custom domain of the API, with a base path if several services share it: 'api.dev.example.com' or
+   * 'api.example.com/logs'. openapi.yaml lists it in servers; without it, the execute-api URL. The stack doesn't
+   * create the domain yet (README → What to add next)
+   */
+  apiDomain?: string;
 
   /** esbuild */
   esbuildMinify: boolean;

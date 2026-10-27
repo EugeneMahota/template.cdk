@@ -63,7 +63,8 @@ as `entry` and `exportName`.
      when there is a `body` (`httpJsonBodyParser` answers 422 to a body that is not valid JSON). Errors are
      `{"message": "..."}`;
    - `operationId` is the export name, `tags` is the folder in `src/api/`.
-5. `servers` has the execute-api URL with two variables: the API id from the deploy output and the stage.
+5. `servers` has one entry per stage: `https://<apiDomain>` when the stage config sets `apiDomain`, otherwise the
+   execute-api URL with the API id as a variable.
 6. Writes `openapi/openapi.yaml` with a "generated, do not edit" header. `--check` builds the same file in memory and
    fails if the committed one differs.
 

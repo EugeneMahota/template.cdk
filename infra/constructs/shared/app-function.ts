@@ -11,11 +11,11 @@ const PROJECT_ROOT: string = path.resolve(__dirname, '../../..');
 
 export interface AppFunctionProps extends Omit<NodejsFunctionProps, 'entry' | 'functionName'> {
   config: StageConfig;
-  /** Name without prefixes: 'testFunction' → template-cdk-testFunction-dev */
+  /** Name without prefixes: 'createLog' → template-cdk-createLog-dev */
   name: string;
-  /** Handler file, relative to the project root: 'src/api/test-functions/handler.ts' */
+  /** Handler file, relative to the project root: 'src/api/logs/handler.ts' */
   entry: string;
-  /** Name of the export in that file: 'testFunction' */
+  /** Name of the export in that file: 'createLog' */
   handler: string;
 }
 

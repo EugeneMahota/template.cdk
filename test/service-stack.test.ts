@@ -63,7 +63,6 @@ describe('ServiceStack', () => {
   /** Every route of the API with its auth: a change of who may call what shows up in the merge request */
   it('gives each route the auth it asks for', () => {
     assert.deepEqual(routeAuth(dev), {
-      'POST /v1/test-function': 'NONE',
       'GET /v1/users/me': 'COGNITO_USER_POOLS',
       'POST /v1/logs': 'COGNITO_USER_POOLS',
       'GET /v1/logs': 'COGNITO_USER_POOLS',

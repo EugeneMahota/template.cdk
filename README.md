@@ -18,7 +18,6 @@ infra/                        infrastructure (in template.sls: serverless.ts + s
     ├── api.ts                REST API and addRoute() with its auth: none / cognito / iam
     ├── auth.ts               Cognito user pool and its app client
     ├── users.ts              GET /v1/users/me
-    ├── test-functions.ts     POST /v1/test-function
     ├── event-logs.ts         DynamoDB + GSI and SNS: POST and GET /v1/logs
     ├── sqs.ts                queue + DLQ: POST /v1/internal/add-queue-item
     └── step-functions.ts     delayed run: POST /v1/internal/schedule-delayed-function
@@ -57,7 +56,9 @@ Each stage is a separate stack: `template-cdk-dev`, `template-cdk-staging`, `tem
 The stage is passed as context: `cdk deploy -c stage=uat`. The default is `dev` (`cdk.json` → `context.stage`).
 
 Resource names live in the config too: `names` in `environment.common.ts` has the short ones (`logsTable: 'logs'`),
-and `resourceName()` adds the service and the stage: `template-cdk-logs-dev`.
+and `resourceName()` adds the service and the stage: `template-cdk-logs-dev`. A stage file can also set `apiDomain`,
+the custom domain of its API: `openapi/openapi.yaml` lists it in `servers`, and a stage without it gets the
+execute-api URL.
 
 ## Routes and auth
 
@@ -134,12 +135,6 @@ POOL_ID=<AuthUserPoolId… from the deploy output>
 CLIENT_ID=<AuthUserPoolClientId… from the deploy output>
 ```
 
-**`auth: 'none'`**: no token.
-
-```bash
-curl -X POST $API/v1/test-function -d '{"isShowError": true}'   # 400
-```
-
 **`auth: 'cognito'`**: sign-up is off, so create a test user yourself and get an ID token (it is valid for an hour). The
 password needs 8+ characters with upper and lower case letters, a digit and a symbol.
 
@@ -176,7 +171,7 @@ Logs are in CloudWatch: `/aws/lambda/template-cdk-<function name>-dev`.
 
 ```bash
 cp .env.example .env   # put in your account id
-npm run local -- src/api/test-functions/handler.ts
+npm run local -- src/api/users/handler.ts
 ```
 
 This runs the `if (require.main === module)` block at the end of the handler file. Calls to AWS go to the real
@@ -235,6 +230,10 @@ The skeleton is intentionally minimal. Before building a real service on it, wor
   can't see: messages in the DLQ, API Gateway 5xx, lambda errors and throttles. Each alarm is ~10 lines in a
   construct; `cdk-monitoring-constructs` gives ready-made dashboards. Optional on top: X-Ray
   (`tracing: Tracing.ACTIVE` in `AppFunction`) and structured logs with Lambda Powertools.
+
+- [ ] **Custom domain.** `apiDomain` in a stage file only goes into `openapi/openapi.yaml` for now. To serve the API
+  on it: an ACM certificate in the region of the stack, `restApi.addDomainName(...)` (or a `BasePathMapping` on a
+  domain that several services share) and a DNS record (Route 53 `ARecord` with the `ApiGateway` target).
 
 - [ ] **Publish the OpenAPI spec.** `openapi/openapi.yaml` is generated from the Joi contracts and checked in CI.
   Left: pick where people read it (GitLab shows the committed file as Swagger UI, or `GET /v1/docs`, or S3 + Swagger

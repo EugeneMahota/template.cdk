@@ -5,18 +5,30 @@ info:
   title: template-cdk
   version: 0.0.1
 servers:
-  - url: https://{apiId}.execute-api.eu-west-1.amazonaws.com/{stage}
+  - url: https://{apiId}.execute-api.eu-west-1.amazonaws.com/dev
+    description: dev
     variables:
       apiId:
         default: api-id
         description: The id in ApiRestApiEndpoint… of the deploy output
-      stage:
-        default: dev
-        enum:
-          - dev
-          - staging
-          - uat
-          - prod
+  - url: https://{apiId}.execute-api.eu-west-1.amazonaws.com/staging
+    description: staging
+    variables:
+      apiId:
+        default: api-id
+        description: The id in ApiRestApiEndpoint… of the deploy output
+  - url: https://{apiId}.execute-api.eu-west-1.amazonaws.com/uat
+    description: uat
+    variables:
+      apiId:
+        default: api-id
+        description: The id in ApiRestApiEndpoint… of the deploy output
+  - url: https://{apiId}.execute-api.eu-west-1.amazonaws.com/prod
+    description: prod
+    variables:
+      apiId:
+        default: api-id
+        description: The id in ApiRestApiEndpoint… of the deploy output
 paths:
   /v1/users/me:
     get:
@@ -30,37 +42,6 @@ paths:
           description: OK
         "401":
           description: No token, or the token is not valid
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Error"
-  /v1/test-function:
-    post:
-      operationId: testFunction
-      tags:
-        - test-functions
-      security: []
-      requestBody:
-        required: false
-        content:
-          application/json:
-            schema:
-              type: object
-              properties:
-                isShowError:
-                  type: boolean
-              additionalProperties: false
-      responses:
-        "200":
-          description: OK
-        "400":
-          description: The request does not match the contract
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Error"
-        "422":
-          description: The body is not valid JSON
           content:
             application/json:
               schema:

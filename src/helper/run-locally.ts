@@ -12,7 +12,7 @@ type LocalRequest = {
 };
 
 /**
- * Runs a REST handler on your machine: npm run local -- src/api/test-functions/handler.ts
+ * Runs a REST handler on your machine: npm run local -- src/api/users/handler.ts
  * Environment variables come from .env (see .env.example). AWS resources are the real ones of the deployed stage.
  */
 export async function runLocally(

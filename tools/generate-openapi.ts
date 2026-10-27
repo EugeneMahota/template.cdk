@@ -11,7 +11,7 @@ import joiToJson from 'joi-to-json';
 import { stringify } from 'yaml';
 import type { Route, RouteAuth } from '../infra/constructs/api';
 import { buildConfig } from '../infra/environments/env-builder';
-import { STAGES } from '../infra/environments/types';
+import { StageConfig, STAGES } from '../infra/environments/types';
 import { ServiceStack } from '../infra/service-stack';
 import type { ApiGatewayHandler, RequestContract } from '../src/api/types';
 
@@ -72,15 +72,7 @@ function main(): void {
   const document = {
     openapi: '3.0.3',
     info: { title: config.serviceName, version: readPackageVersion() },
-    servers: [
-      {
-        url: `https://{apiId}.execute-api.${config.awsRegion}.amazonaws.com/{stage}`,
-        variables: {
-          apiId: { default: 'api-id', description: 'The id in ApiRestApiEndpoint… of the deploy output' },
-          stage: { default: 'dev', enum: [...STAGES] },
-        },
-      },
-    ],
+    servers: STAGES.map((stage) => toServer(buildConfig(stage))),
     paths,
     components: {
       securitySchemes,
@@ -103,6 +95,18 @@ function main(): void {
   mkdirSync(path.dirname(SPEC_FILE), { recursive: true });
   writeFileSync(SPEC_FILE, content);
   console.log(`${SPEC_FILE_LABEL}: ${api.routes.length} routes`);
+}
+
+/** A server per stage: its custom domain (apiDomain in the stage config), otherwise the execute-api URL */
+function toServer({ stage, awsRegion, apiDomain }: StageConfig): OpenApiObject {
+  if (apiDomain) {
+    return { url: `https://${apiDomain}`, description: stage };
+  }
+  return {
+    url: `https://{apiId}.execute-api.${awsRegion}.amazonaws.com/${stage}`,
+    description: stage,
+    variables: { apiId: { default: 'api-id', description: 'The id in ApiRestApiEndpoint… of the deploy output' } },
+  };
 }
 
 /** Handlers have no side effects on import: their clients get created, nothing gets called */
