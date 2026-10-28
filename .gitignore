@@ -6,6 +6,9 @@ cdk.out
 .cdk.staging
 
 .env
+
+# local notes and plans, not for the repo
+docs/
 .idea/
 .vscode/
 .DS_Store

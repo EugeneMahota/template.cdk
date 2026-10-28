@@ -4,18 +4,18 @@ import { Runtime } from 'aws-cdk-lib/aws-lambda';
 import { NodejsFunction, NodejsFunctionProps } from 'aws-cdk-lib/aws-lambda-nodejs';
 import { LogGroup } from 'aws-cdk-lib/aws-logs';
 import { Construct } from 'constructs';
-import { StageConfig } from '../environments/types';
-import { resourceName } from '../utils';
+import { StageConfig } from '../../environments/types';
+import { resourceName } from '../../utils';
 
-const PROJECT_ROOT: string = path.resolve(__dirname, '../..');
+const PROJECT_ROOT: string = path.resolve(__dirname, '../../..');
 
 export interface AppFunctionProps extends Omit<NodejsFunctionProps, 'entry' | 'functionName'> {
   config: StageConfig;
-  /** Name without prefixes: 'testFunction' → template-cdk-testFunction-dev */
+  /** Name without prefixes: 'createLog' → template-cdk-createLog-dev */
   name: string;
-  /** Handler file, relative to the project root: 'src/api/test-functions/handler.ts' */
+  /** Handler file, relative to the project root: 'src/api/logs/handler.ts' */
   entry: string;
-  /** Name of the export in that file: 'testFunction' */
+  /** Name of the export in that file: 'createLog' */
   handler: string;
 }
 
@@ -24,6 +24,10 @@ export interface AppFunctionProps extends Omit<NodejsFunctionProps, 'entry' | 'f
  * Any setting can be overridden for a single function: memorySize, timeout, etc.
  */
 export class AppFunction extends NodejsFunction {
+  /** Handler file relative to the project root and its export: tools/generate-openapi.ts reads the contract there */
+  readonly entry: string;
+  readonly exportName: string;
+
   constructor(scope: Construct, id: string, { config, name, entry, environment, ...props }: AppFunctionProps) {
     const functionName: string = resourceName(config, name);
 
@@ -51,5 +55,7 @@ export class AppFunction extends NodejsFunction {
       },
       ...props,
     });
+    this.entry = entry;
+    this.exportName = props.handler;
   }
 }

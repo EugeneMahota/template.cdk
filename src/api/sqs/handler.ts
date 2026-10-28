@@ -1,5 +1,6 @@
 import { SendMessageCommand, SQSClient } from '@aws-sdk/client-sqs';
 import type { SQSEvent } from 'aws-lambda';
+import Joi from 'joi';
 import { getEnv } from '../../helper/environment';
 import { log } from '../../helper/logger';
 import { runLocally } from '../../helper/run-locally';
@@ -11,6 +12,7 @@ const sqs: SQSClient = new SQSClient();
 type QueueItem = { job: string };
 
 export const addItemInQueue: ApiGatewayHandler = restApiHandler(
+  { body: Joi.object({ job: Joi.string().required() }) },
   async ({ body }: LambdaEvent<QueueItem>): Promise<{ message: string }> => {
     await sqs.send(
       new SendMessageCommand({

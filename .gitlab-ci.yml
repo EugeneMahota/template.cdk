@@ -10,18 +10,19 @@ stages: [check, deploy]
 # Keyless AWS access: the job exchanges its OIDC token for the deploy role.
 # One-time setup in AWS: an IAM OIDC identity provider for gitlab.com and a
 # deploy role that trusts this GitLab project (see "OpenID Connect in AWS"
-# in the GitLab docs). AWS_DEPLOY_ROLE_ARN is a GitLab CI/CD variable with
-# that role's ARN.
+# in the GitLab docs). AWS_ROLE_ARN is a GitLab CI/CD variable with that
+# role's ARN. With AWS_ROLE_ARN and AWS_WEB_IDENTITY_TOKEN_FILE set, the AWS
+# SDK inside the CDK CLI assumes the role on its own: no profile, no keys.
 .aws:
   id_tokens:
     AWS_OIDC_TOKEN:
       aud: https://gitlab.com
+  variables:
+    AWS_WEB_IDENTITY_TOKEN_FILE: /tmp/oidc-token
+    AWS_REGION: eu-west-1
   before_script:
     - npm ci
-    - echo "$AWS_OIDC_TOKEN" > /tmp/oidc-token
-    # Recreate the profile that cdk.json names, now backed by OIDC
-    - mkdir -p ~/.aws
-    - printf '[profile eugene_account_2]\nweb_identity_token_file=/tmp/oidc-token\nrole_arn=%s\nregion=eu-west-1\n' "$AWS_DEPLOY_ROLE_ARN" > ~/.aws/config
+    - echo "$AWS_OIDC_TOKEN" > "$AWS_WEB_IDENTITY_TOKEN_FILE"
 
 check:
   stage: check
@@ -29,6 +30,8 @@ check:
     - npm ci
     - npm run typecheck
     - npm test
+    # openapi/openapi.yaml must match the routes and the Joi contracts: run `npm run openapi` and commit it
+    - npm run openapi:check
 
 diff:
   extends: .aws

@@ -1,6 +1,5 @@
 {
   "app": "npx tsc && npx tsx infra/app.ts",
-  "profile": "eugene_account_2",
   "watch": {
     "include": [
       "infra/**",

@@ -7,22 +7,26 @@ type LocalRequest = {
   headers?: Record<string, string>;
   path?: Record<string, string>;
   query?: Record<string, string>;
+  /** Token claims for routes with AuthType.COGNITO or LAMBDA: { sub: '<user id>', email: '...' } */
+  claims?: Record<string, string>;
 };
 
 /**
- * Runs a REST handler on your machine: npm run local -- src/api/test-functions/handler.ts
+ * Runs a REST handler on your machine: npm run local -- src/api/users/handler.ts
  * Environment variables come from .env (see .env.example). AWS resources are the real ones of the deployed stage.
  */
 export async function runLocally(
   handler: ApiGatewayHandler,
-  { body, headers, path, query }: LocalRequest
+  { body, headers, path, query, claims }: LocalRequest
 ): Promise<void> {
   /** Only the fields that restApiHandler reads */
+  const requestContext: Partial<APIGatewayProxyEvent['requestContext']> = { authorizer: { claims } };
   const event: Partial<APIGatewayProxyEvent> = {
     body: JSON.stringify(body ?? {}),
     headers: { 'Content-Type': 'application/json', ...headers },
     pathParameters: path ?? null,
     queryStringParameters: query ?? null,
+    requestContext: requestContext as APIGatewayProxyEvent['requestContext'],
   };
   const context: Partial<Context> = {
     functionName: 'local',

@@ -1,6 +1,8 @@
-export type Stage = 'dev' | 'staging' | 'uat' | 'prod';
+import { Stage } from '../../infra/environments/stage';
 
-/** Every lambda has STAGE and SERVICE_NAME: infra/constructs/app-function.ts adds them */
+export { Stage };
+
+/** Every lambda has STAGE and SERVICE_NAME: infra/constructs/shared/app-function.ts adds them */
 export function getStage(): Stage {
   return getEnv('STAGE') as Stage;
 }
