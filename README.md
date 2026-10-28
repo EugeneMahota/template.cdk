@@ -117,11 +117,15 @@ change of who may call what shows up in the merge request.
 ## First deploy
 
 1. `npm install`
-2. Pick the AWS profile with `export AWS_PROFILE=<profile>` (or `--profile <profile>` on each command). The repo
-   names no profile, so everybody uses their own, and CI uses its OIDC role. The region is in
+2. `cp .env.example .env` and set `AWS_PROFILE=<profile>` there. The npm scripts read it from `.env`; an
+   `export AWS_PROFILE=...` in the shell wins over the file. The repo names no profile, so everybody uses their own,
+   and CI uses its OIDC role. Don't pick the profile with `npm run deploy:dev -- --profile <profile>`: npm passes the
+   flag only to `cdk deploy`, not to the bootstrap check before it. The region is in
    `infra/environments/environment.common.ts`.
 3. Once per account and region: `npm run bootstrap`. It creates the `CDKToolkit` stack with a bucket for lambda
-   bundles and roles for deploys. If a stage is in another account, bootstrap it with that account's profile:
+   bundles and roles for deploys. `deploy:dev`, `watch:dev` and the `*:personal` scripts do it for you: before the
+   deploy, `tools/ensure-bootstrap.ts` looks for `CDKToolkit` and runs `cdk bootstrap` when it is missing. Staging,
+   uat and prod are not bootstrapped on their own: bootstrap them on purpose with the profile of their account:
    `npx cdk bootstrap -c stage=prod --profile <profile>`.
 4. `npm run diff:dev` shows what will be created.
 5. `npm run deploy:dev`. At the end CDK prints the API URL and the ids of the user pool and its client:
@@ -139,7 +143,7 @@ change of who may call what shows up in the merge request.
 | `synth:dev` | build the CloudFormation template into `cdk.out/` | `sls package` |
 | `destroy:dev` | delete the stack | `sls remove` |
 | `deploy:personal` / `watch:personal` / `destroy:personal` | your own copy of dev (see "Personal environments") | — |
-| `bootstrap` | prepare the account and region for deploys | — |
+| `bootstrap` | prepare the account and region for deploys (dev and personal deploys run it when needed) | — |
 | `local -- <file>` | run a handler on your machine | `ts-node` + `export-env` |
 | `test` | tests | — |
 | `openapi` | write `openapi/openapi.yaml` from the routes and their Joi contracts | `sls openapi generate` |
