@@ -1,4 +1,4 @@
-import { Stack, StackProps } from 'aws-cdk-lib/core';
+import { Stack, StackProps, Tags } from 'aws-cdk-lib/core';
 import { Construct } from 'constructs';
 import { Api } from './constructs/api';
 import { Auth } from './constructs/auth';
@@ -20,6 +20,13 @@ export class ServiceStack extends Stack {
   constructor(scope: Construct, id: string, props: ServiceStackProps) {
     super(scope, id, props);
     const { config } = props;
+
+    /** On every resource of the stack: costs and resources can be filtered by service, stage and owner */
+    Tags.of(this).add('ApplicationService', config.serviceName);
+    Tags.of(this).add('Environment', config.stage);
+    if (config.owner) {
+      Tags.of(this).add('Owner', config.owner);
+    }
 
     const auth: Auth = new Auth(this, 'Auth', { config });
     const api: Api = new Api(this, 'Api', { config, userPool: auth.userPool, userPoolClient: auth.userPoolClient });

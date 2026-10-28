@@ -13,6 +13,11 @@ export interface StageConfig {
    * create the domain yet (README → What to add next)
    */
   apiDomain?: string;
+  /**
+   * Personal environment of a developer: cdk deploy -c stage=dev -c owner=eugene. A separate stack with its own
+   * resources (template-cdk-logs-dev-eugene) and the settings of dev. Comes from the CLI, not from a stage file
+   */
+  owner?: string;
 
   /** esbuild */
   esbuildMinify: boolean;

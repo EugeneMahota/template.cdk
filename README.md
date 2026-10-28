@@ -56,6 +56,15 @@ turns off source maps and keeps the tables when the stack is deleted.
 Each stage is a separate stack: `template-cdk-dev`, `template-cdk-staging`, `template-cdk-uat`, `template-cdk-prod`.
 The stage is passed as context: `cdk deploy -c stage=uat`. The default is `dev` (`cdk.json` → `context.stage`).
 
+**Personal environments.** `npm run deploy:personal` (`cdk deploy -c stage=dev -c owner=$USER`) deploys your own copy
+of dev: the stack `template-cdk-dev-<owner>` with its own resources (`template-cdk-logs-dev-<owner>`), so nobody
+steps on anybody's data or code. It has the settings of dev and the `Owner` tag. The owner is up to 20 lowercase
+letters, digits and dashes; staging, uat and prod are shared and have no personal copies. `watch:personal` updates the
+code in seconds, `destroy:personal` removes the copy. For a local run against it, change the names in `.env`.
+
+**Tags.** Every resource of the stack gets `ApplicationService` (the service) and `Environment` (the stage), plus
+`Owner` in a personal environment: costs and resources can be filtered by them.
+
 Resource names live in the config too: `names` in `environment.common.ts` has the short ones (`logsTable: 'logs'`),
 and `resourceName()` adds the service and the stage: `template-cdk-logs-dev`. A stage file can also set `apiDomain`,
 the custom domain of its API: `openapi/openapi.yaml` lists it in `servers`, and a stage without it gets the
@@ -108,7 +117,9 @@ change of who may call what shows up in the merge request.
 ## First deploy
 
 1. `npm install`
-2. The AWS profile is set in `cdk.json` (`"profile"`), the region in `infra/environments/environment.common.ts`.
+2. Pick the AWS profile with `export AWS_PROFILE=<profile>` (or `--profile <profile>` on each command). The repo
+   names no profile, so everybody uses their own, and CI uses its OIDC role. The region is in
+   `infra/environments/environment.common.ts`.
 3. Once per account and region: `npm run bootstrap`. It creates the `CDKToolkit` stack with a bucket for lambda
    bundles and roles for deploys. If a stage is in another account, bootstrap it with that account's profile:
    `npx cdk bootstrap -c stage=prod --profile <profile>`.
@@ -127,6 +138,7 @@ change of who may call what shows up in the merge request.
 | `watch:dev` | the same, but automatically when you save a file | — |
 | `synth:dev` | build the CloudFormation template into `cdk.out/` | `sls package` |
 | `destroy:dev` | delete the stack | `sls remove` |
+| `deploy:personal` / `watch:personal` / `destroy:personal` | your own copy of dev (see "Personal environments") | — |
 | `bootstrap` | prepare the account and region for deploys | — |
 | `local -- <file>` | run a handler on your machine | `ts-node` + `export-env` |
 | `test` | tests | — |
@@ -216,7 +228,8 @@ The skeleton is intentionally minimal. Before building a real service on it, wor
   `cdk diff` on merge requests; deploy `staging` on merge to the default branch; deploy `prod` manually. It uses
   GitLab OIDC instead of stored AWS keys, so what is left is the one-time AWS setup: an IAM OIDC identity
   provider for `gitlab.com`, a deploy role that trusts your GitLab project (see "OpenID Connect in AWS" in the
-  GitLab docs) and the `AWS_DEPLOY_ROLE_ARN` CI/CD variable with that role's ARN.
+  GitLab docs) and the `AWS_ROLE_ARN` CI/CD variable with that role's ARN. The AWS SDK in the CDK CLI picks up
+  `AWS_ROLE_ARN` and `AWS_WEB_IDENTITY_TOKEN_FILE` on its own, so CI needs no profile.
 
 - [ ] **Auth for real users.** The user pool is minimal. Before real users come: send its emails through SES
   (`email: UserPoolEmail.withSES(...)`), since the built-in Cognito email sends only 50 emails a day; decide who

@@ -11,8 +11,8 @@ import { Stage } from '../infra/environments/stage';
 import { ServiceStack } from '../infra/service-stack';
 
 /** Synthesizes the stack into a CloudFormation template: no deploy, no AWS credentials */
-function synth(stage: Stage): Template {
-  const config = buildConfig(stage);
+function synth(stage: Stage, owner?: string): Template {
+  const config = buildConfig(stage, owner);
   const stack = new ServiceStack(new App(), 'TestStack', { config, env: { region: config.awsRegion } });
   return Template.fromStack(stack);
 }
@@ -43,6 +43,30 @@ describe('ServiceStack', () => {
       TableName: 'template-cdk-logs-dev',
       GlobalSecondaryIndexes: [Match.objectLike({ IndexName: 'eventCode-createdAt-index' })],
     });
+  });
+
+  it('tags the resources with the service and the stage', () => {
+    dev.hasResourceProperties('AWS::DynamoDB::Table', {
+      Tags: Match.arrayWith([
+        { Key: 'ApplicationService', Value: 'template-cdk' },
+        { Key: 'Environment', Value: 'dev' },
+      ]),
+    });
+  });
+
+  it('gives a personal environment its own resources with the settings of dev', () => {
+    const personal: Template = synth(Stage.DEV, 'eugene');
+    personal.hasResourceProperties('AWS::DynamoDB::Table', {
+      TableName: 'template-cdk-logs-dev-eugene',
+      Tags: Match.arrayWith([{ Key: 'Owner', Value: 'eugene' }]),
+    });
+    personal.hasResource('AWS::DynamoDB::Table', { DeletionPolicy: 'Delete' });
+  });
+
+  it('allows a personal environment only for dev and only with a short lowercase owner', () => {
+    assert.throws(() => buildConfig(Stage.PROD, 'eugene'), /copy of dev/);
+    assert.throws(() => buildConfig(Stage.DEV, 'Eugene.Mahota'), /lowercase letters/);
+    assert.throws(() => buildConfig(Stage.DEV, 'a'.repeat(21)), /up to 20/);
   });
 
   it('moves failed queue messages to DLQ after 2 attempts', () => {
