@@ -56,11 +56,13 @@ turns off source maps and keeps the tables when the stack is deleted.
 Each stage is a separate stack: `template-cdk-dev`, `template-cdk-staging`, `template-cdk-uat`, `template-cdk-prod`.
 The stage is passed as context: `cdk deploy -c stage=uat`. The default is `dev` (`cdk.json` → `context.stage`).
 
-**Personal environments.** `npm run deploy:personal` (`cdk deploy -c stage=dev -c owner=$USER`) deploys your own copy
-of dev: the stack `template-cdk-dev-<owner>` with its own resources (`template-cdk-logs-dev-<owner>`), so nobody
-steps on anybody's data or code. It has the settings of dev and the `Owner` tag. The owner is up to 20 lowercase
-letters, digits and dashes; staging, uat and prod are shared and have no personal copies. `watch:personal` updates the
-code in seconds, `destroy:personal` removes the copy. For a local run against it, change the names in `.env`.
+**Personal environments.** Set `OWNER=<your name>` in `.env` once, then `npm run deploy:personal`
+(`cdk deploy -c stage=dev -c personal=true`) deploys your own copy of dev: the stack `template-cdk-dev-<owner>` with
+its own resources (`template-cdk-logs-dev-<owner>`), so nobody steps on anybody's data or code. It has the settings
+of dev and the `Owner` tag. The owner is up to 20 lowercase letters, digits and dashes; staging, uat and prod are
+shared and have no personal copies. `watch:personal` updates the code in seconds, `destroy:personal` removes the
+copy. `-c owner=<name>` wins over `OWNER`, for example to remove somebody else's copy:
+`npm run cdk -- destroy -c stage=dev -c owner=<name>`. For a local run against it, change the names in `.env`.
 
 **Tags.** Every resource of the stack gets `ApplicationService` (the service) and `Environment` (the stage), plus
 `Owner` in a personal environment: costs and resources can be filtered by them.

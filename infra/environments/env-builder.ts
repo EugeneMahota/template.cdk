@@ -17,7 +17,7 @@ const STAGE_CONFIGS: Record<Stage, StageOverrides> = {
 const OWNER: RegExp = /^[a-z][a-z0-9-]{0,19}$/;
 
 /**
- * The stage and the owner come as strings from the CLI (cdk deploy -c stage=dev -c owner=eugene), so they are checked
+ * The stage and the owner come as strings from the CLI and .env (see resolveOwner), so they are checked
  * here. Only dev has personal environments: staging, uat and prod are shared
  */
 export function buildConfig(stage: unknown, owner?: unknown): StageConfig {
@@ -36,6 +36,20 @@ export function buildConfig(stage: unknown, owner?: unknown): StageConfig {
     throw new Error(`Owner "${owner}" must be up to 20 lowercase letters, digits and dashes, starting with a letter`);
   }
   return { ...config, owner };
+}
+
+/**
+ * The owner of a personal environment: -c owner=eugene, or -c personal=true with OWNER from .env (that is what
+ * npm run deploy:personal passes). -c owner wins, so a one-off deploy for another owner needs no change in .env
+ */
+export function resolveOwner(owner: unknown, personal: unknown, env: NodeJS.ProcessEnv = process.env): unknown {
+  if (owner !== undefined || String(personal) !== 'true') {
+    return owner;
+  }
+  if (!env.OWNER) {
+    throw new Error('A personal environment needs OWNER in .env, e.g. OWNER=eugene (see .env.example)');
+  }
+  return env.OWNER;
 }
 
 function isStage(value: unknown): value is Stage {

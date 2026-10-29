@@ -1,5 +1,5 @@
 import { App } from 'aws-cdk-lib/core';
-import { buildConfig } from './environments/env-builder';
+import { buildConfig, resolveOwner } from './environments/env-builder';
 import { ServiceStack } from './service-stack';
 import { envName } from './utils';
 
@@ -7,9 +7,11 @@ const app: App = new App();
 
 /**
  * cdk deploy -c stage=prod → prod. The default stage (dev) is set in cdk.json → context.stage.
- * cdk deploy -c stage=dev -c owner=eugene → a personal copy of dev: the stack template-cdk-dev-eugene
+ * npm run deploy:personal (cdk deploy -c stage=dev -c personal=true) with OWNER=eugene in .env → a personal copy of
+ * dev: the stack template-cdk-dev-eugene. cdk deploy -c stage=dev -c owner=eugene does the same without .env
  */
-const config = buildConfig(app.node.tryGetContext('stage'), app.node.tryGetContext('owner'));
+const ctx = (key: string): unknown => app.node.tryGetContext(key);
+const config = buildConfig(ctx('stage'), resolveOwner(ctx('owner'), ctx('personal')));
 
 new ServiceStack(app, `${config.serviceName}-${envName(config)}`, {
   config,

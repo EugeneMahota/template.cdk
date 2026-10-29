@@ -6,7 +6,7 @@ import { TokenAuthorizer } from 'aws-cdk-lib/aws-apigateway';
 import { UserPool, UserPoolClient } from 'aws-cdk-lib/aws-cognito';
 import { Api, AuthType, HttpMethod } from '../infra/constructs/api';
 import { AppFunction } from '../infra/constructs/shared/app-function';
-import { buildConfig } from '../infra/environments/env-builder';
+import { buildConfig, resolveOwner } from '../infra/environments/env-builder';
 import { Stage } from '../infra/environments/stage';
 import { ServiceStack } from '../infra/service-stack';
 
@@ -67,6 +67,13 @@ describe('ServiceStack', () => {
     assert.throws(() => buildConfig(Stage.PROD, 'eugene'), /copy of dev/);
     assert.throws(() => buildConfig(Stage.DEV, 'Eugene.Mahota'), /lowercase letters/);
     assert.throws(() => buildConfig(Stage.DEV, 'a'.repeat(21)), /up to 20/);
+  });
+
+  it('takes the owner of a personal environment from OWNER, unless -c owner is given', () => {
+    assert.equal(resolveOwner(undefined, 'true', { OWNER: 'eugene' }), 'eugene');
+    assert.equal(resolveOwner('anna', 'true', { OWNER: 'eugene' }), 'anna');
+    assert.equal(resolveOwner(undefined, undefined, { OWNER: 'eugene' }), undefined);
+    assert.throws(() => resolveOwner(undefined, 'true', {}), /OWNER in \.env/);
   });
 
   it('moves failed queue messages to DLQ after 2 attempts', () => {

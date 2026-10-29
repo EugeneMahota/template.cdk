@@ -14,8 +14,9 @@ export interface StageConfig {
    */
   apiDomain?: string;
   /**
-   * Personal environment of a developer: cdk deploy -c stage=dev -c owner=eugene. A separate stack with its own
-   * resources (template-cdk-logs-dev-eugene) and the settings of dev. Comes from the CLI, not from a stage file
+   * Personal environment of a developer: npm run deploy:personal with OWNER=eugene in .env, or cdk deploy -c stage=dev
+   * -c owner=eugene. A separate stack with its own resources (template-cdk-logs-dev-eugene) and the settings of dev.
+   * Comes from .env or the CLI, not from a stage file
    */
   owner?: string;
 
