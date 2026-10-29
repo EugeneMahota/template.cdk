@@ -57,7 +57,12 @@ export function restApiHandler<Event extends LambdaEvent<unknown, unknown, unkno
     )
     .use(jsonErrorBody())
     /** Logs the error. 4xx: the message of the HttpError goes to the client. Anything else: a 500 without details */
-    .use(httpErrorHandler({ logger: error, fallbackMessage: 'Internal Server Error' }))
+    .use(
+      httpErrorHandler({
+        logger: error,
+        fallbackMessage: 'Internal Server Error',
+      })
+    )
     .handler(async (event, context) => {
       const request: LambdaEvent = validate(contract, toLambdaEvent(event));
       const result: Result = await handler(request as Event, context);

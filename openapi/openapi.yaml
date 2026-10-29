@@ -185,12 +185,12 @@ components:
       type: apiKey
       in: header
       name: Authorization
-      description: ID token of the user pool, checked by the lambda authorizer
+      description: Access token of the user pool, checked by the lambda authorizer
     cognito:
       type: apiKey
       in: header
       name: Authorization
-      description: ID token of the user pool
+      description: Access token of the user pool
     iam:
       type: apiKey
       in: header

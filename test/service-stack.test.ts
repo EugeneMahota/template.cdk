@@ -9,11 +9,15 @@ import { AppFunction } from '../infra/constructs/shared/app-function';
 import { buildConfig, resolveOwner } from '../infra/environments/env-builder';
 import { Stage } from '../infra/environments/stage';
 import { ServiceStack } from '../infra/service-stack';
+import { USER_SCOPE } from '../src/helper/auth';
 
 /** Synthesizes the stack into a CloudFormation template: no deploy, no AWS credentials */
 function synth(stage: Stage, owner?: string): Template {
   const config = buildConfig(stage, owner);
-  const stack = new ServiceStack(new App(), 'TestStack', { config, env: { region: config.awsRegion } });
+  const stack = new ServiceStack(new App(), 'TestStack', {
+    config,
+    env: { region: config.awsRegion },
+  });
   return Template.fromStack(stack);
 }
 
@@ -105,6 +109,29 @@ describe('ServiceStack', () => {
     dev.resourceCountIs('AWS::ApiGateway::Authorizer', 2);
   });
 
+  it('makes the Cognito routes take an access token: a scope on every method', () => {
+    const cognitoMethods = Object.values(dev.findResources('AWS::ApiGateway::Method')).filter(
+      ({ Properties }) => Properties.AuthorizationType === 'COGNITO_USER_POOLS'
+    );
+    assert.equal(cognitoMethods.length, 2);
+    for (const { Properties } of cognitoMethods) {
+      assert.deepEqual(Properties.AuthorizationScopes, [USER_SCOPE]);
+    }
+  });
+
+  it('lets getMe read the email from the user pool', () => {
+    dev.hasResourceProperties('AWS::IAM::Policy', {
+      PolicyDocument: {
+        Statement: Match.arrayWith([
+          Match.objectLike({
+            Action: 'cognito-idp:AdminGetUser',
+            Effect: 'Allow',
+          }),
+        ]),
+      },
+    });
+  });
+
   it('adds the CORS header to errors that API Gateway returns itself', () => {
     for (const ResponseType of ['DEFAULT_4XX', 'DEFAULT_5XX']) {
       dev.hasResourceProperties('AWS::ApiGateway::GatewayResponse', {
@@ -143,14 +170,46 @@ describe('Api', () => {
       ['v1/users/{user_id}', /"\{user_id\}" must be kebab-case/],
     ];
     for (const [path, error] of wrongPaths) {
-      assert.throws(() => api.addRoute({ method: HttpMethod.GET, path, handler, auth: AuthType.NONE }), error);
+      assert.throws(
+        () =>
+          api.addRoute({
+            method: HttpMethod.GET,
+            path,
+            handler,
+            auth: AuthType.NONE,
+          }),
+        error
+      );
     }
+  });
+
+  it('takes custom scopes on Cognito routes only', () => {
+    const { stack, api, handler } = emptyApi();
+    api.addRoute({
+      method: HttpMethod.POST,
+      path: 'v1/orders',
+      handler,
+      auth: AuthType.COGNITO,
+      scopes: ['shop/write'],
+    });
+    Template.fromStack(stack).hasResourceProperties('AWS::ApiGateway::Method', {
+      HttpMethod: 'POST',
+      AuthorizationScopes: ['shop/write'],
+    });
+
+    const lambdaRoute = { method: HttpMethod.GET, path: 'v1/orders', handler, auth: AuthType.LAMBDA, scopes: ['x'] };
+    assert.throws(() => api.addRoute(lambdaRoute), /scopes work only with AuthType.COGNITO/);
   });
 
   it('takes the auth type from any authorizer', () => {
     const { stack, api, handler } = emptyApi();
     const auth = new TokenAuthorizer(stack, 'TokenAuthorizer', { handler });
-    api.addRoute({ method: HttpMethod.GET, path: 'v1/users/{userId}/reports', handler, auth });
+    api.addRoute({
+      method: HttpMethod.GET,
+      path: 'v1/users/{userId}/reports',
+      handler,
+      auth,
+    });
 
     Template.fromStack(stack).hasResourceProperties('AWS::ApiGateway::Method', {
       HttpMethod: 'GET',

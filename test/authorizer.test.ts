@@ -12,24 +12,48 @@ const METHOD_ARN = 'arn:aws:execute-api:eu-west-1:123456789012:abc123/dev/GET/v1
 /** Our own key instead of the one of the user pool: the verifier gets it instead of downloading the JWKS */
 const { privateKey, publicKey } = generateKeyPairSync('rsa', { modulusLength: 2048 });
 
-/** An ID token like the ones Cognito gives, signed with our key */
-function idToken(claims: Record<string, unknown> = {}): string {
+/** A JWT like the ones Cognito gives, signed with our key */
+function token(payload: Record<string, unknown>): string {
+  const encode = (part: object): string => Buffer.from(JSON.stringify(part)).toString('base64url');
+  const unsigned = `${encode({
+    alg: 'RS256',
+    kid: 'test-key',
+    typ: 'JWT',
+  })}.${encode(payload)}`;
+  return `${unsigned}.${createSign('RSA-SHA256').update(unsigned).sign(privateKey).toString('base64url')}`;
+}
+
+/** An access token of a signed-in user: no aud and no email, but client_id and scope */
+function accessToken(claims: Record<string, unknown> = {}): string {
   const now = Math.floor(Date.now() / 1000);
-  const payload = {
+  return token({
+    sub: 'user-1',
+    username: 'user-1',
+    'cognito:groups': ['admins', 'editors'],
+    client_id: CLIENT_ID,
+    scope: 'aws.cognito.signin.user.admin',
+    iss: `https://cognito-idp.eu-west-1.amazonaws.com/${USER_POOL_ID}`,
+    token_use: 'access',
+    auth_time: now,
+    iat: now,
+    exp: now + 3600,
+    ...claims,
+  });
+}
+
+/** An ID token of the same user: valid, but for the frontend, not for the API */
+function idToken(): string {
+  const now = Math.floor(Date.now() / 1000);
+  return token({
     sub: 'user-1',
     email: 'me@example.com',
-    'cognito:groups': ['admins', 'editors'],
     aud: CLIENT_ID,
     iss: `https://cognito-idp.eu-west-1.amazonaws.com/${USER_POOL_ID}`,
     token_use: 'id',
     auth_time: now,
     iat: now,
     exp: now + 3600,
-    ...claims,
-  };
-  const encode = (part: object): string => Buffer.from(JSON.stringify(part)).toString('base64url');
-  const unsigned = `${encode({ alg: 'RS256', kid: 'test-key', typ: 'JWT' })}.${encode(payload)}`;
-  return `${unsigned}.${createSign('RSA-SHA256').update(unsigned).sign(privateKey).toString('base64url')}`;
+  });
 }
 
 function event(token: string): APIGatewayTokenAuthorizerEvent {
@@ -44,8 +68,8 @@ describe('lambda authorizer', () => {
     getVerifier().cacheJwks({ keys: [jwk] } as Jwks);
   });
 
-  it('allows every route of the stage for a valid ID token and passes its claims', async () => {
-    const result = await authorize(event(idToken()));
+  it('allows every route of the stage for a valid access token and passes its claims', async () => {
+    const result = await authorize(event(accessToken()));
 
     assert.equal(result.principalId, 'user-1');
     assert.deepEqual(result.policyDocument.Statement, [
@@ -55,19 +79,20 @@ describe('lambda authorizer', () => {
         Resource: 'arn:aws:execute-api:eu-west-1:123456789012:abc123/dev/*',
       },
     ]);
-    assert.equal(result.context?.email, 'me@example.com');
+    assert.equal(result.context?.username, 'user-1');
     assert.equal(result.context?.['cognito:groups'], 'admins,editors');
   });
 
   it('answers 401 to the tokens that the built-in authorizer refuses', async () => {
     const wrongTokens = [
-      idToken({ exp: Math.floor(Date.now() / 1000) - 60 }),
-      idToken({ aud: 'another-client' }),
-      idToken({ token_use: 'access' }),
+      accessToken({ exp: Math.floor(Date.now() / 1000) - 60 }),
+      accessToken({ client_id: 'another-client' }),
+      accessToken({ scope: 'openid' }),
+      idToken(),
       'not-a-jwt',
     ];
-    for (const token of wrongTokens) {
-      await assert.rejects(authorize(event(token)), { message: 'Unauthorized' });
+    for (const wrongToken of wrongTokens) {
+      await assert.rejects(authorize(event(wrongToken)), { message: 'Unauthorized' });
     }
   });
 });

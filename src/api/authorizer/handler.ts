@@ -1,13 +1,16 @@
 import { CognitoJwtVerifier } from 'aws-jwt-verify';
 import type { APIGatewayAuthorizerResult, APIGatewayTokenAuthorizerEvent } from 'aws-lambda';
+import { USER_SCOPE } from '../../helper/auth';
 import { getEnv } from '../../helper/environment';
 import { warn } from '../../helper/logger';
 
+/** An access token: issued for our app client (client_id) and with the scope of a signed-in user */
 const createVerifier = () =>
   CognitoJwtVerifier.create({
     userPoolId: getEnv('USER_POOL_ID'),
     clientId: getEnv('USER_POOL_CLIENT_ID'),
-    tokenUse: 'id',
+    tokenUse: 'access',
+    scope: USER_SCOPE,
   });
 
 let verifier: ReturnType<typeof createVerifier> | undefined;
@@ -20,8 +23,9 @@ export function getVerifier(): ReturnType<typeof createVerifier> {
 
 /**
  * Lambda (TOKEN) authorizer for the routes with AuthType.LAMBDA. For now it checks the same as the built-in Cognito
- * authorizer: the ID token in the Authorization header, its signature and expiry, the user pool and the app client.
- * Handlers get the claims of the token, like with the built-in one
+ * authorizer: the access token in the Authorization header, its signature and expiry, the user pool, the app client
+ * and the scope. Handlers get the claims of the token, like with the built-in one. An access token has no email or
+ * other profile attributes: only sub, username, cognito:groups, client_id and scope
  */
 export const authorize = async (event: APIGatewayTokenAuthorizerEvent): Promise<APIGatewayAuthorizerResult> => {
   let claims: Record<string, unknown>;

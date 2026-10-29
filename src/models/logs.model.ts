@@ -27,7 +27,12 @@ export async function createEventLog(eventCode: EventLogCode): Promise<EventLog>
     eventCode,
     createdAt: new Date().toISOString(),
   };
-  await db.send(new PutCommand({ TableName: getEnv('LOGS_TABLE'), Item: eventLog }));
+  await db.send(
+    new PutCommand({
+      TableName: getEnv('LOGS_TABLE'),
+      Item: eventLog,
+    })
+  );
   return eventLog;
 }
 

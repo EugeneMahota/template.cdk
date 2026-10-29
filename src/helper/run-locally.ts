@@ -7,7 +7,7 @@ type LocalRequest = {
   headers?: Record<string, string>;
   path?: Record<string, string>;
   query?: Record<string, string>;
-  /** Token claims for routes with AuthType.COGNITO or LAMBDA: { sub: '<user id>', email: '...' } */
+  /** Access token claims for routes with AuthType.COGNITO or LAMBDA: { sub: '<user id>', username: '<user id>' } */
   claims?: Record<string, string>;
 };
 

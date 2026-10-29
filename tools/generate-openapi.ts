@@ -28,12 +28,17 @@ type OpenApiObject = Record<string, unknown>;
 type SecurityScheme = { name: string; definition: OpenApiObject };
 
 const SECURITY_SCHEMES: Record<Exclude<AuthType, AuthType.NONE>, OpenApiObject> = {
-  [AuthType.COGNITO]: { type: 'apiKey', in: 'header', name: 'Authorization', description: 'ID token of the user pool' },
+  [AuthType.COGNITO]: {
+    type: 'apiKey',
+    in: 'header',
+    name: 'Authorization',
+    description: 'Access token of the user pool',
+  },
   [AuthType.LAMBDA]: {
     type: 'apiKey',
     in: 'header',
     name: 'Authorization',
-    description: 'ID token of the user pool, checked by the lambda authorizer',
+    description: 'Access token of the user pool, checked by the lambda authorizer',
   },
   [AuthType.IAM]: {
     type: 'apiKey',
@@ -48,7 +53,10 @@ function main(): void {
   /** Routes and auth don't depend on the stage. No bundling: the spec needs the routes, not the lambda code */
   const config = buildConfig(Stage.DEV);
   const app = new App({ context: { 'aws:cdk:bundling-stacks': [] } });
-  const { api } = new ServiceStack(app, 'OpenApi', { config, env: { region: config.awsRegion } });
+  const { api } = new ServiceStack(app, 'OpenApi', {
+    config,
+    env: { region: config.awsRegion },
+  });
 
   const paths: Record<string, Record<string, OpenApiObject>> = {};
   const securitySchemes: Record<string, OpenApiObject> = {};
@@ -88,7 +96,12 @@ function main(): void {
       },
     },
   };
-  const content = HEADER + stringify(document, { lineWidth: 120, aliasDuplicateObjects: false });
+  const content =
+    HEADER +
+    stringify(document, {
+      lineWidth: 120,
+      aliasDuplicateObjects: false,
+    });
 
   if (process.argv.includes('--check')) {
     const committed = existsSync(SPEC_FILE) ? readFileSync(SPEC_FILE, 'utf8') : '';

@@ -83,8 +83,8 @@ api.addRoute({ method: HttpMethod.GET, path: 'v1/users/me', handler: getMe, auth
 | `auth` | Who calls | How |
 |---|---|---|
 | `AuthType.NONE` | anyone | no auth |
-| `AuthType.COGNITO` | signed-in users of the app | an ID token of the user pool in the `Authorization` header |
-| `AuthType.LAMBDA` | signed-in users of the app | the same ID token, checked by our lambda authorizer |
+| `AuthType.COGNITO` | signed-in users of the app | an access token of the user pool in the `Authorization` header |
+| `AuthType.LAMBDA` | signed-in users of the app | the same access token, checked by our lambda authorizer |
 | `AuthType.IAM` | other services and scripts | the request is signed with AWS credentials (SigV4) |
 | an authorizer object | depends on the authorizer | a lambda `TokenAuthorizer`, another user pool |
 
@@ -105,8 +105,14 @@ change of who may call what shows up in the merge request.
   that the authorizer has checked. Paths have `me` instead of a user id (`/v1/users/me/orders`, not
   `/v1/users/{userId}/orders`), so nobody can put another id into the URL. For a record of another user, answer
   404, not 403: the API doesn't reveal that the record exists.
-- **The lambda authorizer** (`src/api/authorizer/handler.ts`) checks the ID token like the built-in one, with
-  `aws-jwt-verify`: the signature, the expiry, the user pool and the app client. It is the place for custom rules,
+- **Access token, not ID token.** Cognito gives both at sign-in. The ID token says who the user is (email, name)
+  and is for the frontend only. The access token is for APIs: it has `sub`, `username`, `cognito:groups`,
+  `client_id` and `scope`, but no email or other attributes, so a handler that needs them reads the user pool or
+  its own table (`getMe` calls `AdminGetUser`). API Gateway takes an access token only on a method with scopes:
+  `AuthType.COGNITO` routes require `aws.cognito.signin.user.admin` (`USER_SCOPE` in `src/helper/auth.ts`), the
+  scope of every signed-in user. A route can ask for other scopes: `scopes: ['template-cdk/write']`.
+- **The lambda authorizer** (`src/api/authorizer/handler.ts`) checks the access token like the built-in one, with
+  `aws-jwt-verify`: the signature, the expiry, the user pool, the app client and the scope. It is the place for custom rules,
   such as a blocked account or a role (`cognito:groups`). API Gateway caches its answer for 5 minutes per token, so
   the answer allows the whole API and must not depend on the route. `/v1/users/me` uses it, the logs use the
   built-in one.
@@ -160,7 +166,7 @@ POOL_ID=<AuthUserPoolId… from the deploy output>
 CLIENT_ID=<AuthUserPoolClientId… from the deploy output>
 ```
 
-**`AuthType.COGNITO` and `AuthType.LAMBDA`**: both take the same ID token. Sign-up is off, so create a test user
+**`AuthType.COGNITO` and `AuthType.LAMBDA`**: both take the same access token. Sign-up is off, so create a test user
 yourself and get a token (it is valid for an hour). The password needs 8+ characters with upper and lower case
 letters, a digit and a symbol.
 
@@ -171,7 +177,7 @@ aws cognito-idp admin-set-user-password --user-pool-id $POOL_ID --username me@ex
   --password '<password>' --permanent
 TOKEN=$(aws cognito-idp initiate-auth --client-id $CLIENT_ID --auth-flow USER_PASSWORD_AUTH \
   --auth-parameters USERNAME=me@example.com,PASSWORD='<password>' \
-  --query AuthenticationResult.IdToken --output text)
+  --query AuthenticationResult.AccessToken --output text)
 
 curl $API/v1/users/me                                # 401: no token
 curl $API/v1/users/me -H "Authorization: $TOKEN"     # id and email of the caller
@@ -243,6 +249,14 @@ The skeleton is intentionally minimal. Before building a real service on it, wor
   as a custom attribute that users can't change: keep it out of the client's `writeAttributes`, or anyone can set
   it with their own token; turn on MFA if needed. Also set throttling on the API stage
   (`deployOptions.throttlingRateLimit` / `throttlingBurstLimit`): right now the API runs on the account defaults.
+
+- [ ] **Custom scopes and OAuth.** Today the routes check only that the caller is signed in
+  (`aws.cognito.signin.user.admin`). For finer access: a resource server in the user pool
+  (`userPool.addResourceServer` with scopes such as `template-cdk/read` and `template-cdk/write`) and `scopes` on
+  the routes. Cognito puts such scopes into the access token only through OAuth: managed login with the
+  authorization code flow and PKCE for the frontend (a Cognito domain and callback URLs, so the client loses
+  `disableOAuth`), client credentials for service-to-service calls. A sign-in with SRP or password
+  (`initiate-auth`) gives only `aws.cognito.signin.user.admin`.
 
 - [ ] **Config and secrets in SSM Parameter Store.** Keep per-stage values out of the repo under
   `/template-cdk/<stage>/...`. Two patterns, pick per value: deploy time —

@@ -29,12 +29,29 @@ export class ServiceStack extends Stack {
     }
 
     const auth: Auth = new Auth(this, 'Auth', { config });
-    const api: Api = new Api(this, 'Api', { config, userPool: auth.userPool, userPoolClient: auth.userPoolClient });
+    const api: Api = new Api(this, 'Api', {
+      config,
+      userPool: auth.userPool,
+      userPoolClient: auth.userPoolClient,
+    });
     this.api = api;
 
-    new Users(this, 'Users', { config, api });
-    new EventLogs(this, 'EventLogs', { config, api });
-    new Sqs(this, 'Sqs', { config, api });
-    new StepFunctions(this, 'StepFunctions', { config, api });
+    new Users(this, 'Users', {
+      config,
+      api,
+      userPool: auth.userPool,
+    });
+    new EventLogs(this, 'EventLogs', {
+      config,
+      api,
+    });
+    new Sqs(this, 'Sqs', {
+      config,
+      api,
+    });
+    new StepFunctions(this, 'StepFunctions', {
+      config,
+      api,
+    });
   }
 }

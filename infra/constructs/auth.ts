@@ -6,8 +6,8 @@ import { resourceName } from '../utils';
 
 /**
  * Cognito user pool for the routes with AuthType.COGNITO or AuthType.LAMBDA (see api.ts). Users sign in with email
- * and password and get an ID token, the authorizer of the route checks it. How to create a test user and get a
- * token: README → Check after a deploy
+ * and password and get tokens: the frontend reads the ID token, and calls the API with the access token, which the
+ * authorizer of the route checks. How to create a test user and get a token: README → Check after a deploy
  */
 export class Auth extends Construct {
   readonly userPool: UserPool;

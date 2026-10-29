@@ -11,6 +11,7 @@ import {
 } from 'aws-cdk-lib/aws-apigateway';
 import { IUserPool, IUserPoolClient } from 'aws-cdk-lib/aws-cognito';
 import { Construct } from 'constructs';
+import { USER_SCOPE } from '../../src/helper/auth';
 import { StageConfig } from '../environments/types';
 import { resourceName } from '../utils';
 import { AppFunction } from './shared/app-function';
@@ -27,9 +28,12 @@ export enum HttpMethod {
 export enum AuthType {
   /** Anyone */
   NONE = 'none',
-  /** Signed-in users, with an ID token of the user pool in the Authorization header */
+  /**
+   * Signed-in users, with an access token of the user pool in the Authorization header. The ID token is for the
+   * frontend only (who the user is), the access token is for APIs (what the caller may do)
+   */
   COGNITO = 'cognito',
-  /** The same token, but our lambda checks it (src/api/authorizer/handler.ts): the place for custom rules */
+  /** The same access token, but our lambda checks it (src/api/authorizer/handler.ts): the place for custom rules */
   LAMBDA = 'lambda',
   /** Other services and scripts, with requests signed by IAM credentials (SigV4) */
   IAM = 'iam',
@@ -46,6 +50,11 @@ export interface Route {
   handler: AppFunction;
   /** Required on purpose: a public route says AuthType.NONE out loud */
   auth: RouteAuth;
+  /**
+   * AuthType.COGNITO only: the token needs one of these scopes, the default is [USER_SCOPE]. With scopes API Gateway
+   * takes an access token; without them it would take an ID token
+   */
+  scopes?: string[];
 }
 
 const VERSION_SEGMENT = /^v\d+$/;
@@ -54,7 +63,7 @@ const PATH_SEGMENT = /^([a-z0-9]+(-[a-z0-9]+)*|\{[a-z][a-zA-Z0-9]*\})$/;
 interface ApiProps {
   config: StageConfig;
   userPool: IUserPool;
-  /** The lambda authorizer accepts only the tokens of this client */
+  /** The lambda authorizer accepts only the access tokens of this client */
   userPoolClient: IUserPoolClient;
 }
 
@@ -91,19 +100,30 @@ export class Api extends Construct {
      * The value is a mapping expression, so a static string goes in single quotes
      */
     const corsHeaders = { 'Access-Control-Allow-Origin': "'*'" };
-    this.restApi.addGatewayResponse('Default4xx', { type: ResponseType.DEFAULT_4XX, responseHeaders: corsHeaders });
-    this.restApi.addGatewayResponse('Default5xx', { type: ResponseType.DEFAULT_5XX, responseHeaders: corsHeaders });
+    this.restApi.addGatewayResponse('Default4xx', {
+      type: ResponseType.DEFAULT_4XX,
+      responseHeaders: corsHeaders,
+    });
+    this.restApi.addGatewayResponse('Default5xx', {
+      type: ResponseType.DEFAULT_5XX,
+      responseHeaders: corsHeaders,
+    });
   }
 
   /** api.addRoute({ method: HttpMethod.GET, path: 'v1/users/me', handler: fn, auth: AuthType.COGNITO }) */
   addRoute(route: Route): void {
-    const { method, path, handler, auth } = route;
+    const { method, path, handler, auth, scopes } = route;
     assertPath(path);
-    this.restApi.root.resourceForPath(path).addMethod(method, new LambdaIntegration(handler), this.methodOptions(auth));
+    if (scopes && auth !== AuthType.COGNITO) {
+      /** A lambda authorizer answers once for all routes (see its cache), so it can't check scopes per route */
+      throw new Error(`Route "${path}": scopes work only with AuthType.COGNITO`);
+    }
+    const options: MethodOptions = this.methodOptions(auth, scopes);
+    this.restApi.root.resourceForPath(path).addMethod(method, new LambdaIntegration(handler), options);
     this.routes.push(route);
   }
 
-  private methodOptions(auth: RouteAuth): MethodOptions {
+  private methodOptions(auth: RouteAuth, scopes: string[] = [USER_SCOPE]): MethodOptions {
     if (auth === AuthType.NONE) {
       return { authorizationType: AuthorizationType.NONE };
     }
@@ -111,7 +131,7 @@ export class Api extends Construct {
       return { authorizationType: AuthorizationType.IAM };
     }
     if (auth === AuthType.COGNITO) {
-      return { authorizer: this.userPoolAuthorizer() };
+      return { authorizer: this.userPoolAuthorizer(), authorizationScopes: scopes };
     }
     if (auth === AuthType.LAMBDA) {
       return { authorizer: this.lambdaAuthorizer() };
